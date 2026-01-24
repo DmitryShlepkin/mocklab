@@ -17,21 +17,20 @@ const patterns = {
   delay: /-delay-(\d+)/,
 
   // Matches -status-404 in filename
-  status: /-status-(\d+)/
+  status: /-status-(\d+)/,
+
+  // Matches special regex characters for escaping
+  regexSpecialChars: /[.*+?^${}()|[\]\\]/g
 };
 
-// Build a regex pattern for exact file name match
-// Returns pattern: ^{escapedName}(-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$
 function buildExactFilePattern(escapedName) {
-  const parts = [
-    '^',
-    escapedName,
-    '(-method-(get|post|put|delete|patch))?',
-    '(-delay-\\d+)?',
-    '(-status-\\d+)?',
-    '\\.json$'
-  ];
-  return parts.join('');
+  const p1 = '^';
+  const p2 = escapedName;
+  const p3 = '(-method-(get|post|put|delete|patch))?';
+  const p4 = '(-delay-\\d+)?';
+  const p5 = '(-status-\\d+)?';
+  const p6 = '\\.json$';
+  return p1 + p2 + p3 + p4 + p5 + p6;
 }
 
 module.exports = {

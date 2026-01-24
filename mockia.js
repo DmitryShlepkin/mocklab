@@ -16,7 +16,8 @@ class Mockia {
     const configPath = path.join(process.cwd(), 'mock.conf');
     const defaultConfig = {
       host: 'localhost',
-      port: 3232
+      port: 3232,
+      historyLimit: 100
     };
 
     try {
@@ -38,14 +39,14 @@ class Mockia {
       const arg = args[i];
       if (arg.startsWith('--overlay=')) {
         global.mockiaOverlay = arg.substring(10);
-        console.log('📦 Overlay from command line: ' + global.mockiaOverlay);
+        console.log('Overlay from command line: ' + global.mockiaOverlay);
         return;
       }
     }
 
     if (this.config.overlay) {
       global.mockiaOverlay = this.config.overlay;
-      console.log('📦 Overlay from config: ' + global.mockiaOverlay);
+      console.log('Overlay from config: ' + global.mockiaOverlay);
     }
   }
 
@@ -63,7 +64,41 @@ class Mockia {
   }
 
   escapeRegex(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const specialChars = patterns.regexSpecialChars;
+    const escaped = str.replace(specialChars, '\\$&');
+    return escaped;
+  }
+
+  logRequest(uri, method, filePath, error) {
+    let relativeFilePath = '';
+
+    if (filePath) {
+      const projectRoot = process.cwd();
+      if (filePath.startsWith(this.overlayBaseDir)) {
+        relativeFilePath = filePath.replace(this.overlayBaseDir, '/overlays');
+      } else if (filePath.startsWith(this.mockDir)) {
+        relativeFilePath = filePath.replace(this.mockDir, '/mocks');
+      } else {
+        relativeFilePath = filePath.replace(projectRoot, '');
+      }
+    }
+
+    const errorLabel = error ? 'Error' : '';
+    console.log(method + ' ' + uri + (relativeFilePath ? ' ' + relativeFilePath : '') + (errorLabel ? ' ' + errorLabel : ''));
+
+    const requestEntry = {
+      uri: uri,
+      method: method,
+      filePath: relativeFilePath || null,
+      error: error
+    };
+
+    global.mockiaRequestHistory.unshift(requestEntry);
+
+    const limit = this.config.historyLimit || 100;
+    if (global.mockiaRequestHistory.length > limit) {
+      global.mockiaRequestHistory = global.mockiaRequestHistory.slice(0, limit);
+    }
   }
 
   findMockFile(requestPath, queryParams, method) {
@@ -246,9 +281,14 @@ class Mockia {
     methods.forEach(function(httpMethod) {
       self.app[httpMethod]('*', function(req, res) {
         const requestPath = req.path === '/' ? '/index' : req.path;
+        const queryString = Object.keys(req.query).length > 0
+          ? '?' + Object.keys(req.query).map(key => key + '=' + req.query[key]).join('&')
+          : '';
+        const uri = requestPath + queryString;
         const filePath = self.findMockFile(requestPath, req.query, httpMethod.toUpperCase());
 
         if (!filePath) {
+          self.logRequest(uri, httpMethod.toUpperCase(), null, true);
           return res.status(404).json({
             error: 'Mock file not found',
             path: requestPath,
@@ -256,6 +296,8 @@ class Mockia {
             method: httpMethod.toUpperCase()
           });
         }
+
+        self.logRequest(uri, httpMethod.toUpperCase(), filePath, false);
 
         try {
           const content = fs.readFileSync(filePath, 'utf8');
@@ -279,12 +321,12 @@ class Mockia {
     this.setupRoutes();
 
     this.app.listen(this.config.port, this.config.host, () => {
-      console.log('🚀 Mock server running at http://' + this.config.host + ':' + this.config.port);
-      console.log('📁 Serving mocks from: ' + this.mockDir);
+      console.log('Mock server running at http://' + this.config.host + ':' + this.config.port);
+      console.log('Serving mocks from: ' + this.mockDir);
       if (global.mockiaOverlay) {
-        console.log('📦 Active overlay: ' + global.mockiaOverlay);
+        console.log('Active overlay: ' + global.mockiaOverlay);
       }
-      console.log('⚙️  Configuration: ' + JSON.stringify(this.config, null, 2));
+      console.log('Configuration: ' + JSON.stringify(this.config, null, 2));
     });
   }
 }

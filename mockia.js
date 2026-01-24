@@ -1,6 +1,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { patterns, buildExactFilePattern } = require('./patterns');
 
 class Mockia {
   constructor() {
@@ -95,8 +96,7 @@ class Mockia {
               return false;
             }
 
-            const exactPattern = /^\[([^=\]]+)=([^\]]+)\](-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$/i;
-            const matchResult = file.match(exactPattern);
+            const matchResult = file.match(patterns.exactParamValue);
 
             if (matchResult) {
               const paramName = matchResult[1];
@@ -119,8 +119,7 @@ class Mockia {
               return false;
             }
 
-            const queryPattern = /^\[([^\]=]+)\](-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$/i;
-            const matchResult = file.match(queryPattern);
+            const matchResult = file.match(patterns.queryParam);
 
             if (matchResult && matchResult[1] !== '*') {
               const paramName = matchResult[1];
@@ -152,8 +151,7 @@ class Mockia {
           if (file.startsWith('_')) {
             return false;
           }
-          const pattern = /^index(-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$/i;
-          const match = file.match(pattern);
+          const match = file.match(patterns.index);
           if (match) {
             const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
             return fileMethod === method;
@@ -179,14 +177,8 @@ class Mockia {
         }
 
         const escapedName = self.escapeRegex(baseName);
-        const r1 = '^';
-        const r2 = escapedName;
-        const r3 = '(-method-(get|post|put|delete|patch))?';
-        const r4 = '(-delay-\\d+)?';
-        const r5 = '(-status-\\d+)?';
-        const r6 = '\\.json$';
-        const fullPattern = r1 + r2 + r3 + r4 + r5 + r6;
-        const regex = new RegExp(fullPattern, 'i');
+        const patternString = buildExactFilePattern(escapedName);
+        const regex = new RegExp(patternString, 'i');
         const match = file.match(regex);
 
         if (match) {
@@ -205,8 +197,7 @@ class Mockia {
           return false;
         }
 
-        const wildcardPattern = /^\[\*\](-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$/i;
-        const match = file.match(wildcardPattern);
+        const match = file.match(patterns.wildcard);
 
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
@@ -229,7 +220,7 @@ class Mockia {
   parseFileMetadata(filePath) {
     const fileName = path.basename(filePath, '.json');
 
-    const delayMatch = fileName.match(/-delay-(\d+)/);
+    const delayMatch = fileName.match(patterns.delay);
     let delay = delayMatch ? parseInt(delayMatch[1], 10) : 0;
 
     if (delay > 600000) {
@@ -237,7 +228,7 @@ class Mockia {
       delay = 600000;
     }
 
-    const statusMatch = fileName.match(/-status-(\d+)/);
+    const statusMatch = fileName.match(patterns.status);
     let status = statusMatch ? parseInt(statusMatch[1], 10) : 200;
 
     if (status < 100 || status > 599) {

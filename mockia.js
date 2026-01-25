@@ -116,91 +116,136 @@ class Mockia {
   }
 
   findMockFileInDirectory(baseRoot, requestPath, queryParams, method) {
-    const baseDir = path.join(baseRoot, path.dirname(requestPath));
-    const baseName = path.basename(requestPath);
-
+    // Priority 1 & 2: Check for query parameter matches
     if (queryParams && Object.keys(queryParams).length > 0) {
-      const queryDir = path.join(baseRoot, requestPath);
-
-      try {
-        if (fs.existsSync(queryDir)) {
-          const files = fs.readdirSync(queryDir);
-
-          const exactParamMatch = files.find(function(file) {
-            if (file.startsWith('_')) {
-              return false;
-            }
-
-            const matchResult = file.match(patterns.exactParamValue);
-
-            if (matchResult) {
-              const paramName = matchResult[1];
-              const paramValue = matchResult[2];
-              const fileMethod = matchResult[4] ? matchResult[4].toUpperCase() : 'GET';
-
-              return queryParams.hasOwnProperty(paramName) &&
-                     String(queryParams[paramName]) === paramValue &&
-                     fileMethod === method;
-            }
-            return false;
-          });
-
-          if (exactParamMatch) {
-            return path.join(queryDir, exactParamMatch);
-          }
-
-          const queryParamMatch = files.find(function(file) {
-            if (file.startsWith('_')) {
-              return false;
-            }
-
-            const matchResult = file.match(patterns.queryParam);
-
-            if (matchResult && matchResult[1] !== '*') {
-              const paramName = matchResult[1];
-              const fileMethod = matchResult[3] ? matchResult[3].toUpperCase() : 'GET';
-              return queryParams.hasOwnProperty(paramName) && fileMethod === method;
-            }
-            return false;
-          });
-
-          if (queryParamMatch) {
-            return path.join(queryDir, queryParamMatch);
-          }
-        }
-      } catch (err) {
-        // Directory not readable
+      const queryFile = this.findQueryParamFile(baseRoot, requestPath, queryParams, method);
+      if (queryFile) {
+        return queryFile;
       }
     }
 
+    // Priority 3 & 4: Check for index files
+    const indexFile = this.findIndexFile(baseRoot, requestPath, method);
+    if (indexFile) {
+      return indexFile;
+    }
+
+    // Priority 5: Check for exact file match
+    const exactFile = this.findExactFile(baseRoot, requestPath, method);
+    if (exactFile) {
+      return exactFile;
+    }
+
+    // Priority 6: Check for wildcard file
+    const wildcardFile = this.findWildcardFile(baseRoot, requestPath, method);
+    if (wildcardFile) {
+      return wildcardFile;
+    }
+
+    return null;
+  }
+
+  findQueryParamFile(baseRoot, requestPath, queryParams, method) {
+    const queryDir = path.join(baseRoot, requestPath);
+
+    try {
+      if (!fs.existsSync(queryDir)) {
+        return null;
+      }
+
+      const files = fs.readdirSync(queryDir);
+
+      // Priority 1: Check for exact param value match [paramName=value].json
+      const exactParamMatch = files.find(function(file) {
+        if (file.startsWith('_')) {
+          return false;
+        }
+
+        const matchResult = file.match(patterns.exactParamValue);
+
+        if (matchResult) {
+          const paramName = matchResult[1];
+          const paramValue = matchResult[2];
+          const fileMethod = matchResult[4] ? matchResult[4].toUpperCase() : 'GET';
+
+          return queryParams.hasOwnProperty(paramName) &&
+                 String(queryParams[paramName]) === paramValue &&
+                 fileMethod === method;
+        }
+        return false;
+      });
+
+      if (exactParamMatch) {
+        return path.join(queryDir, exactParamMatch);
+      }
+
+      // Priority 2: Check for any param name match [paramName].json
+      const queryParamMatch = files.find(function(file) {
+        if (file.startsWith('_')) {
+          return false;
+        }
+
+        const matchResult = file.match(patterns.queryParam);
+
+        if (matchResult && matchResult[1] !== '*') {
+          const paramName = matchResult[1];
+          const fileMethod = matchResult[3] ? matchResult[3].toUpperCase() : 'GET';
+          return queryParams.hasOwnProperty(paramName) && fileMethod === method;
+        }
+        return false;
+      });
+
+      if (queryParamMatch) {
+        return path.join(queryDir, queryParamMatch);
+      }
+
+    } catch (err) {
+      // Directory not readable
+    }
+
+    return null;
+  }
+
+  findIndexFile(baseRoot, requestPath, method) {
+    // Priority 3: Check for simple index.json
     const indexPath = path.join(baseRoot, requestPath, 'index.json');
     if (fs.existsSync(indexPath) && !path.basename(indexPath).startsWith('_')) {
       return indexPath;
     }
 
+    // Priority 4: Check for index with method/delay/status
     const indexDir = path.join(baseRoot, requestPath);
-    if (fs.existsSync(indexDir)) {
-      try {
-        const files = fs.readdirSync(indexDir);
-        const indexMatch = files.find(function(file) {
-          if (file.startsWith('_')) {
-            return false;
-          }
-          const match = file.match(patterns.index);
-          if (match) {
-            const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
-            return fileMethod === method;
-          }
-          return false;
-        });
-
-        if (indexMatch) {
-          return path.join(indexDir, indexMatch);
-        }
-      } catch (err) {
-        // Directory not readable
-      }
+    if (!fs.existsSync(indexDir)) {
+      return null;
     }
+
+    try {
+      const files = fs.readdirSync(indexDir);
+      const indexMatch = files.find(function(file) {
+        if (file.startsWith('_')) {
+          return false;
+        }
+        const match = file.match(patterns.index);
+        if (match) {
+          const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
+          return fileMethod === method;
+        }
+        return false;
+      });
+
+      if (indexMatch) {
+        return path.join(indexDir, indexMatch);
+      }
+    } catch (err) {
+      // Directory not readable
+    }
+
+    return null;
+  }
+
+  findExactFile(baseRoot, requestPath, method) {
+    const baseDir = path.join(baseRoot, path.dirname(requestPath));
+    const baseName = path.basename(requestPath);
 
     try {
       const files = fs.readdirSync(baseDir);
@@ -226,6 +271,18 @@ class Mockia {
       if (exactMatch) {
         return path.join(baseDir, exactMatch);
       }
+    } catch (err) {
+      // Directory doesn't exist
+    }
+
+    return null;
+  }
+
+  findWildcardFile(baseRoot, requestPath, method) {
+    const baseDir = path.join(baseRoot, path.dirname(requestPath));
+
+    try {
+      const files = fs.readdirSync(baseDir);
 
       const wildcardMatch = files.find(function(file) {
         if (file.startsWith('_')) {
@@ -244,7 +301,6 @@ class Mockia {
       if (wildcardMatch) {
         return path.join(baseDir, wildcardMatch);
       }
-
     } catch (err) {
       // Directory doesn't exist
     }

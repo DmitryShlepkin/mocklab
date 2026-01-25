@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const Mockia = require('./mocklab');
+const Mocklab = require('./mocklab');
 
 // Global overlay variable that can be changed dynamically
 global.mockiaOverlay = null;
@@ -9,8 +9,8 @@ global.mockiaOverlay = null;
 global.mockiaRequestHistory = [];
 
 if (require.main === module) {
-  const server = new Mockia();
+  const server = new Mocklab();
   server.start();
 }
 
-module.exports = Mockia;
+module.exports = Mocklab;

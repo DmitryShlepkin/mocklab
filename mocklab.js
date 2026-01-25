@@ -13,7 +13,7 @@ const colors = {
   black: '\x1b[30m'
 };
 
-class Mockia {
+class Mocklab {
   constructor() {
     this.app = express();
     this.config = this.loadConfig();
@@ -422,4 +422,4 @@ class Mockia {
   }
 }
 
-module.exports = Mockia;
+module.exports = Mocklab;

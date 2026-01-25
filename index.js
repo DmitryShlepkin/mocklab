@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const Mockia = require('./Mockia');
+const Mockia = require('./mocklab');
 
 // Global overlay variable that can be changed dynamically
 global.mockiaOverlay = null;

@@ -1,10 +1,10 @@
 {
-  "name": "mockia",
+  "name": "mocklab",
   "version": "1.0.0",
   "description": "File-based mock API server with automatic routing",
   "main": "index.js",
   "bin": {
-    "mockia": "./index.js"
+    "mocklab": "./index.js"
   },
   "scripts": {
     "start": "node index.js"
@@ -22,18 +22,18 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DmitryShlepkin/mockia"
+    "url": "https://github.com/DmitryShlepkin/mocklab"
   },
   "bugs": {
-    "url": "https://github.com/DmitryShlepkin/mockia/issues"
+    "url": "https://github.com/DmitryShlepkin/mocklab/issues"
   },
-  "homepage": "https://github.com/DmitryShlepkin/mockia",
+  "homepage": "https://github.com/DmitryShlepkin/mocklab",
   "dependencies": {
     "express": "^4.18.2"
   },
   "files": [
     "index.js",
-    "mockia.js",
+    "mocklab.js",
     "patterns.js",
     "README.md"
   ]

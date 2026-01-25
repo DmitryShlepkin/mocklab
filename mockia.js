@@ -3,6 +3,16 @@ const fs = require('fs');
 const path = require('path');
 const { patterns, buildExactFilePattern } = require('./patterns');
 
+// ANSI color codes
+const colors = {
+  reset: '\x1b[0m',
+  white: '\x1b[37m',
+  cyan: '\x1b[36m',
+  red: '\x1b[31m',
+  bgWhite: '\x1b[47m',
+  black: '\x1b[30m'
+};
+
 class Mockia {
   constructor() {
     this.app = express();
@@ -39,14 +49,14 @@ class Mockia {
       const arg = args[i];
       if (arg.startsWith('--overlay=')) {
         global.mockiaOverlay = arg.substring(10);
-        console.log('Overlay from command line: ' + global.mockiaOverlay);
+        console.log('Overlay from command line: ' + colors.cyan + global.mockiaOverlay + colors.reset);
         return;
       }
     }
 
     if (this.config.overlay) {
       global.mockiaOverlay = this.config.overlay;
-      console.log('Overlay from config: ' + global.mockiaOverlay);
+      console.log('Overlay from config: ' + colors.cyan + global.mockiaOverlay + colors.reset);
     }
   }
 
@@ -83,8 +93,22 @@ class Mockia {
       }
     }
 
-    const errorLabel = error ? 'Error' : '';
-    console.log(method + ' ' + uri + (relativeFilePath ? ' ' + relativeFilePath : '') + (errorLabel ? ' ' + errorLabel : ''));
+    // Prepare colored output parts
+    const methodColored = colors.bgWhite + colors.black + ' ' + method + ' ' + colors.reset;
+    const uriColored = uri;
+    const filePathColored = relativeFilePath ? colors.cyan + relativeFilePath + colors.reset : '';
+    const errorColored = error ? colors.red + 'Error' + colors.reset : '';
+
+    // Build final message using string interpolation
+    const parts = [methodColored, uriColored];
+    if (filePathColored) {
+      parts.push(filePathColored);
+    }
+    if (errorColored) {
+      parts.push(errorColored);
+    }
+
+    console.log(parts.join(' '));
 
     const requestEntry = {
       uri: uri,
@@ -330,45 +354,52 @@ class Mockia {
     return { delay, status };
   }
 
+  handleRequest(req, res, method) {
+    const requestPath = req.path === '/' ? '/index' : req.path;
+    const queryString = Object.keys(req.query).length > 0
+      ? '?' + Object.keys(req.query).map(key => key + '=' + req.query[key]).join('&')
+      : '';
+    const uri = requestPath + queryString;
+    const filePath = this.findMockFile(requestPath, req.query, method);
+
+    if (!filePath) {
+      this.logRequest(uri, method, null, true);
+      return res.status(404).json({
+        error: 'Mock file not found',
+        path: requestPath,
+        query: req.query,
+        method: method
+      });
+    }
+
+    this.logRequest(uri, method, filePath, false);
+    this.sendMockResponse(res, filePath);
+  }
+
+  sendMockResponse(res, filePath) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      const jsonData = JSON.parse(content);
+      const metadata = this.parseFileMetadata(filePath);
+
+      setTimeout(function() {
+        res.status(metadata.status).json(jsonData);
+      }, metadata.delay);
+    } catch (err) {
+      res.status(500).json({
+        error: 'Error reading mock file',
+        message: err.message
+      });
+    }
+  }
+
   setupRoutes() {
     const methods = ['get', 'post', 'put', 'delete', 'patch'];
     const self = this;
 
     methods.forEach(function(httpMethod) {
       self.app[httpMethod]('*', function(req, res) {
-        const requestPath = req.path === '/' ? '/index' : req.path;
-        const queryString = Object.keys(req.query).length > 0
-          ? '?' + Object.keys(req.query).map(key => key + '=' + req.query[key]).join('&')
-          : '';
-        const uri = requestPath + queryString;
-        const filePath = self.findMockFile(requestPath, req.query, httpMethod.toUpperCase());
-
-        if (!filePath) {
-          self.logRequest(uri, httpMethod.toUpperCase(), null, true);
-          return res.status(404).json({
-            error: 'Mock file not found',
-            path: requestPath,
-            query: req.query,
-            method: httpMethod.toUpperCase()
-          });
-        }
-
-        self.logRequest(uri, httpMethod.toUpperCase(), filePath, false);
-
-        try {
-          const content = fs.readFileSync(filePath, 'utf8');
-          const jsonData = JSON.parse(content);
-          const metadata = self.parseFileMetadata(filePath);
-
-          setTimeout(function() {
-            res.status(metadata.status).json(jsonData);
-          }, metadata.delay);
-        } catch (err) {
-          res.status(500).json({
-            error: 'Error reading mock file',
-            message: err.message
-          });
-        }
+        self.handleRequest(req, res, httpMethod.toUpperCase());
       });
     });
   }
@@ -377,10 +408,14 @@ class Mockia {
     this.setupRoutes();
 
     this.app.listen(this.config.port, this.config.host, () => {
-      console.log('Mock server running at http://' + this.config.host + ':' + this.config.port);
-      console.log('Serving mocks from: ' + this.mockDir);
+      const url = colors.cyan + 'http://' + this.config.host + ':' + this.config.port + colors.reset;
+      const mocksPath = colors.cyan + this.mockDir + colors.reset;
+      const overlayName = colors.cyan + global.mockiaOverlay + colors.reset;
+
+      console.log('Mock server running at ' + url);
+      console.log('Serving mocks from: ' + mocksPath);
       if (global.mockiaOverlay) {
-        console.log('Active overlay: ' + global.mockiaOverlay);
+        console.log('Active overlay: ' + overlayName);
       }
       console.log('Configuration: ' + JSON.stringify(this.config, null, 2));
     });

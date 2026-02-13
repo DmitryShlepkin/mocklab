@@ -1,5 +1,3 @@
-// Regex patterns for file matching
-
 const patterns = {
   // Matches [paramName=value]-method-X-delay-X-status-X.json
   exactParamValue: /^\[([^=\]]+)=([^\]]+)\](-method-(get|post|put|delete|patch))?(-delay-\d+)?(-status-\d+)?\.json$/i,
@@ -23,17 +21,29 @@ const patterns = {
   regexSpecialChars: /[.*+?^${}()|[\]\\]/g
 };
 
-function buildExactFilePattern(escapedName) {
-  const p1 = '^';
-  const p2 = escapedName;
-  const p3 = '(-method-(get|post|put|delete|patch))?';
-  const p4 = '(-delay-\\d+)?';
-  const p5 = '(-status-\\d+)?';
-  const p6 = '\\.json$';
-  return p1 + p2 + p3 + p4 + p5 + p6;
+function buildPatternWithExtension(patternBase, extension) {
+  const ext = extension || 'json';
+  const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const jsonPart = '\\.json$';
+  const extPart = '\\.' + escapedExt + '$';
+  const newSource = patternBase.source.replace(jsonPart, extPart);
+  return new RegExp(newSource, patternBase.flags);
+}
+
+function buildExactFilePattern(escapedName, extension) {
+  const ext = extension || 'json';
+  const escapedExt = ext.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const part1 = '^';
+  const part2 = escapedName;
+  const part3 = '(-method-(get|post|put|delete|patch))?';
+  const part4 = '(-delay-\\d+)?';
+  const part5 = '(-status-\\d+)?';
+  const part6 = '\\.' + escapedExt + '$';
+  return part1 + part2 + part3 + part4 + part5 + part6;
 }
 
 module.exports = {
   patterns,
-  buildExactFilePattern
+  buildExactFilePattern,
+  buildPatternWithExtension
 };

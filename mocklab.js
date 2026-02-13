@@ -1,7 +1,8 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
-const { patterns, buildExactFilePattern } = require('./patterns');
+const { patterns, buildExactFilePattern, buildPatternWithExtension } = require('./patterns');
+const { getMimeType, isBinaryType, extractExtension, removeExtension } = require('./mime');
 
 // ANSI color codes
 const colors = {
@@ -19,6 +20,15 @@ class Mocklab {
     this.config = this.loadConfig();
     this.mockDir = path.join(process.cwd(), 'mocks');
     this.overlayBaseDir = path.join(process.cwd(), 'overlays');
+
+    // Initialize global variables if not already set
+    if (!global.mocklabOverlay) {
+      global.mocklabOverlay = null;
+    }
+    if (!global.mocklabRequestHistory) {
+      global.mocklabRequestHistory = [];
+    }
+
     this.setupOverlay();
   }
 
@@ -48,23 +58,23 @@ class Mocklab {
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       if (arg.startsWith('--overlay=')) {
-        global.mockiaOverlay = arg.substring(10);
-        console.log('Overlay from command line: ' + colors.cyan + global.mockiaOverlay + colors.reset);
+        global.mocklabOverlay = arg.substring(10);
+        console.log('Overlay from command line: ' + colors.cyan + global.mocklabOverlay + colors.reset);
         return;
       }
     }
 
     if (this.config.overlay) {
-      global.mockiaOverlay = this.config.overlay;
-      console.log('Overlay from config: ' + colors.cyan + global.mockiaOverlay + colors.reset);
+      global.mocklabOverlay = this.config.overlay;
+      console.log('Overlay from config: ' + colors.cyan + global.mocklabOverlay + colors.reset);
     }
   }
 
   getSearchDirectories(requestPath) {
     const directories = [];
 
-    if (global.mockiaOverlay) {
-      const overlayDir = path.join(this.overlayBaseDir, global.mockiaOverlay);
+    if (global.mocklabOverlay) {
+      const overlayDir = path.join(this.overlayBaseDir, global.mocklabOverlay);
       directories.push(overlayDir);
     }
 
@@ -117,20 +127,20 @@ class Mocklab {
       error: error
     };
 
-    global.mockiaRequestHistory.unshift(requestEntry);
+    global.mocklabRequestHistory.unshift(requestEntry);
 
     const limit = this.config.historyLimit || 100;
-    if (global.mockiaRequestHistory.length > limit) {
-      global.mockiaRequestHistory = global.mockiaRequestHistory.slice(0, limit);
+    if (global.mocklabRequestHistory.length > limit) {
+      global.mocklabRequestHistory = global.mocklabRequestHistory.slice(0, limit);
     }
   }
 
-  findMockFile(requestPath, queryParams, method) {
+  findMockFile(requestPath, queryParams, method, extension) {
     const searchDirs = this.getSearchDirectories(requestPath);
 
     for (let i = 0; i < searchDirs.length; i++) {
       const searchBase = searchDirs[i];
-      const filePath = this.findMockFileInDirectory(searchBase, requestPath, queryParams, method);
+      const filePath = this.findMockFileInDirectory(searchBase, requestPath, queryParams, method, extension);
       if (filePath) {
         return filePath;
       }
@@ -139,38 +149,41 @@ class Mocklab {
     return null;
   }
 
-  findMockFileInDirectory(baseRoot, requestPath, queryParams, method) {
+  findMockFileInDirectory(baseRoot, requestPath, queryParams, method, extension) {
     // Priority 1 & 2: Check for query parameter matches
     if (queryParams && Object.keys(queryParams).length > 0) {
-      const queryFile = this.findQueryParamFile(baseRoot, requestPath, queryParams, method);
+      const queryFile = this.findQueryParamFile(baseRoot, requestPath, queryParams, method, extension);
       if (queryFile) {
         return queryFile;
       }
     }
 
     // Priority 3 & 4: Check for index files
-    const indexFile = this.findIndexFile(baseRoot, requestPath, method);
+    const indexFile = this.findIndexFile(baseRoot, requestPath, method, extension);
     if (indexFile) {
       return indexFile;
     }
 
     // Priority 5: Check for exact file match
-    const exactFile = this.findExactFile(baseRoot, requestPath, method);
+    const exactFile = this.findExactFile(baseRoot, requestPath, method, extension);
     if (exactFile) {
       return exactFile;
     }
 
-    // Priority 6: Check for wildcard file
-    const wildcardFile = this.findWildcardFile(baseRoot, requestPath, method);
-    if (wildcardFile) {
-      return wildcardFile;
+    // Priority 6: Check for wildcard file (only for JSON or when no extension specified)
+    if (!extension || extension === 'json') {
+      const wildcardFile = this.findWildcardFile(baseRoot, requestPath, method, extension);
+      if (wildcardFile) {
+        return wildcardFile;
+      }
     }
 
     return null;
   }
 
-  findQueryParamFile(baseRoot, requestPath, queryParams, method) {
+  findQueryParamFile(baseRoot, requestPath, queryParams, method, extension) {
     const queryDir = path.join(baseRoot, requestPath);
+    const ext = extension || 'json';
 
     try {
       if (!fs.existsSync(queryDir)) {
@@ -178,14 +191,16 @@ class Mocklab {
       }
 
       const files = fs.readdirSync(queryDir);
+      const exactParamPattern = buildPatternWithExtension(patterns.exactParamValue, ext);
+      const queryParamPattern = buildPatternWithExtension(patterns.queryParam, ext);
 
-      // Priority 1: Check for exact param value match [paramName=value].json
+      // Priority 1: Check for exact param value match [paramName=value].ext
       const exactParamMatch = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
 
-        const matchResult = file.match(patterns.exactParamValue);
+        const matchResult = file.match(exactParamPattern);
 
         if (matchResult) {
           const paramName = matchResult[1];
@@ -203,13 +218,13 @@ class Mocklab {
         return path.join(queryDir, exactParamMatch);
       }
 
-      // Priority 2: Check for any param name match [paramName].json
+      // Priority 2: Check for any param name match [paramName].ext
       const queryParamMatch = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
 
-        const matchResult = file.match(patterns.queryParam);
+        const matchResult = file.match(queryParamPattern);
 
         if (matchResult && matchResult[1] !== '*') {
           const paramName = matchResult[1];
@@ -230,9 +245,11 @@ class Mocklab {
     return null;
   }
 
-  findIndexFile(baseRoot, requestPath, method) {
-    // Priority 3: Check for simple index.json
-    const indexPath = path.join(baseRoot, requestPath, 'index.json');
+  findIndexFile(baseRoot, requestPath, method, extension) {
+    const ext = extension || 'json';
+
+    // Priority 3: Check for simple index.ext
+    const indexPath = path.join(baseRoot, requestPath, 'index.' + ext);
     if (fs.existsSync(indexPath) && !path.basename(indexPath).startsWith('_')) {
       return indexPath;
     }
@@ -245,11 +262,13 @@ class Mocklab {
 
     try {
       const files = fs.readdirSync(indexDir);
+      const indexPattern = buildPatternWithExtension(patterns.index, ext);
+
       const indexMatch = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
-        const match = file.match(patterns.index);
+        const match = file.match(indexPattern);
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
           return fileMethod === method;
@@ -267,10 +286,23 @@ class Mocklab {
     return null;
   }
 
-  findExactFile(baseRoot, requestPath, method) {
+  findExactFile(baseRoot, requestPath, method, extension) {
     const baseDir = path.join(baseRoot, path.dirname(requestPath));
     const baseName = path.basename(requestPath);
+    const ext = extension || 'json';
 
+    // For non-json extensions, only look for exact file match (no patterns)
+    if (extension && extension !== 'json') {
+      const exactFileName = baseName + '.' + ext;
+      const exactFilePath = path.join(baseDir, exactFileName);
+
+      if (fs.existsSync(exactFilePath) && !path.basename(exactFilePath).startsWith('_')) {
+        return exactFilePath;
+      }
+      return null;
+    }
+
+    // JSON file search with method/delay/status patterns
     try {
       const files = fs.readdirSync(baseDir);
       const self = this;
@@ -281,7 +313,7 @@ class Mocklab {
         }
 
         const escapedName = self.escapeRegex(baseName);
-        const patternString = buildExactFilePattern(escapedName);
+        const patternString = buildExactFilePattern(escapedName, ext);
         const regex = new RegExp(patternString, 'i');
         const match = file.match(regex);
 
@@ -296,28 +328,37 @@ class Mocklab {
         return path.join(baseDir, exactMatch);
       }
     } catch (err) {
-      // Directory doesn't exist
+      // Directory not readable
     }
 
     return null;
   }
 
-  findWildcardFile(baseRoot, requestPath, method) {
+  findWildcardFile(baseRoot, requestPath, method, extension) {
     const baseDir = path.join(baseRoot, path.dirname(requestPath));
+    const ext = extension || 'json';
+
+    // Wildcard only works for JSON files
+    if (extension && extension !== 'json') {
+      return null;
+    }
 
     try {
       const files = fs.readdirSync(baseDir);
+
+      const wildcardPattern = buildPatternWithExtension(patterns.wildcard, ext);
 
       const wildcardMatch = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
 
-        const match = file.match(patterns.wildcard);
+        const match = file.match(wildcardPattern);
 
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
-          return fileMethod === method;
+          const methodMatches = fileMethod === method;
+          return methodMatches;
         }
         return false;
       });
@@ -326,7 +367,7 @@ class Mocklab {
         return path.join(baseDir, wildcardMatch);
       }
     } catch (err) {
-      // Directory doesn't exist
+      // Directory not readable
     }
 
     return null;
@@ -356,11 +397,15 @@ class Mocklab {
 
   handleRequest(req, res, method) {
     const requestPath = req.path === '/' ? '/index' : req.path;
+    const extension = extractExtension(requestPath) || 'json';
+    const pathWithoutExtension = removeExtension(requestPath);
+    const mimeType = getMimeType(extension);
+
     const queryString = Object.keys(req.query).length > 0
       ? '?' + Object.keys(req.query).map(key => key + '=' + req.query[key]).join('&')
       : '';
     const uri = requestPath + queryString;
-    const filePath = this.findMockFile(requestPath, req.query, method);
+    const filePath = this.findMockFile(pathWithoutExtension, req.query, method, extension);
 
     if (!filePath) {
       this.logRequest(uri, method, null, true);
@@ -373,18 +418,35 @@ class Mocklab {
     }
 
     this.logRequest(uri, method, filePath, false);
-    this.sendMockResponse(res, filePath);
+    this.sendMockResponse(res, filePath, mimeType, extension);
   }
 
-  sendMockResponse(res, filePath) {
+  sendMockResponse(res, filePath, mimeType, extension) {
     try {
-      const content = fs.readFileSync(filePath, 'utf8');
-      const jsonData = JSON.parse(content);
       const metadata = this.parseFileMetadata(filePath);
+      const isBinary = isBinaryType(extension);
+      const isJson = extension === 'json';
 
-      setTimeout(function() {
-        res.status(metadata.status).json(jsonData);
-      }, metadata.delay);
+      if (isBinary) {
+        // Read binary files as buffer
+        const content = fs.readFileSync(filePath);
+        setTimeout(function() {
+          res.status(metadata.status).type(mimeType).send(content);
+        }, metadata.delay);
+      } else if (isJson) {
+        // Parse JSON files
+        const content = fs.readFileSync(filePath, 'utf8');
+        const jsonData = JSON.parse(content);
+        setTimeout(function() {
+          res.status(metadata.status).type(mimeType).send(jsonData);
+        }, metadata.delay);
+      } else {
+        // Send text files as-is (xml, html, txt, css, js, csv)
+        const content = fs.readFileSync(filePath, 'utf8');
+        setTimeout(function() {
+          res.status(metadata.status).type(mimeType).send(content);
+        }, metadata.delay);
+      }
     } catch (err) {
       res.status(500).json({
         error: 'Error reading mock file',
@@ -410,11 +472,11 @@ class Mocklab {
     this.app.listen(this.config.port, this.config.host, () => {
       const url = colors.cyan + 'http://' + this.config.host + ':' + this.config.port + colors.reset;
       const mocksPath = colors.cyan + this.mockDir + colors.reset;
-      const overlayName = colors.cyan + global.mockiaOverlay + colors.reset;
+      const overlayName = colors.cyan + global.mocklabOverlay + colors.reset;
 
       console.log('Mock server running at ' + url);
       console.log('Serving mocks from: ' + mocksPath);
-      if (global.mockiaOverlay) {
+      if (global.mocklabOverlay) {
         console.log('Active overlay: ' + overlayName);
       }
       console.log('Configuration: ' + JSON.stringify(this.config, null, 2));

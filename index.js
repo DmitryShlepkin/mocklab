@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 const Mocklab = require('./mocklab');
+const ControlPanel = require('./controlpanel');
 
 // Global overlay variable that can be changed dynamically
 global.mocklabOverlay = null;
@@ -10,6 +11,9 @@ global.mocklabRequestHistory = [];
 if (require.main === module) {
   const server = new Mocklab();
   server.start();
+
+  const panel = new ControlPanel(server);
+  panel.start();
 }
 
 module.exports = Mocklab;

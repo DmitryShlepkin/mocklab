@@ -89,7 +89,7 @@ class Mocklab {
     return escaped;
   }
 
-  logRequest(uri, method, filePath, error) {
+  logRequest(uri, method, filePath, error, status, body, query, headers) {
     let relativeFilePath = '';
 
     if (filePath) {
@@ -105,26 +105,35 @@ class Mocklab {
 
     // Prepare colored output parts
     const methodColored = colors.bgWhite + colors.black + ' ' + method + ' ' + colors.reset;
-    const uriColored = uri;
+    const statusColor = (status >= 400) ? colors.red : colors.white;
+    const statusColored = statusColor + status + colors.reset;
     const filePathColored = relativeFilePath ? colors.cyan + relativeFilePath + colors.reset : '';
-    const errorColored = error ? colors.red + 'Error' + colors.reset : '';
 
-    // Build final message using string interpolation
-    const parts = [methodColored, uriColored];
+    const parts = [methodColored, statusColored, uri];
     if (filePathColored) {
       parts.push(filePathColored);
-    }
-    if (errorColored) {
-      parts.push(errorColored);
     }
 
     console.log(parts.join(' '));
 
+    // Filter out noisy/internal headers
+    const ignoredHeaders = ['host', 'connection', 'accept-encoding', 'user-agent'];
+    const filteredHeaders = headers
+      ? Object.fromEntries(
+          Object.entries(headers).filter(([k]) => !ignoredHeaders.includes(k.toLowerCase()))
+        )
+      : null;
+
     const requestEntry = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
       uri: uri,
       method: method,
       filePath: relativeFilePath || null,
-      error: error
+      status: status,
+      error: error,
+      body: (body && Object.keys(body).length > 0) ? body : null,
+      query: (query && Object.keys(query).length > 0) ? query : null,
+      headers: (filteredHeaders && Object.keys(filteredHeaders).length > 0) ? filteredHeaders : null
     };
 
     global.mocklabRequestHistory.unshift(requestEntry);
@@ -408,7 +417,7 @@ class Mocklab {
     const filePath = this.findMockFile(pathWithoutExtension, req.query, method, extension);
 
     if (!filePath) {
-      this.logRequest(uri, method, null, true);
+      this.logRequest(uri, method, null, true, 404, req.body, req.query, req.headers);
       return res.status(404).json({
         error: 'Mock file not found',
         path: requestPath,
@@ -417,13 +426,16 @@ class Mocklab {
       });
     }
 
-    this.logRequest(uri, method, filePath, false);
-    this.sendMockResponse(res, filePath, mimeType, extension);
+    const metadata = this.parseFileMetadata(filePath);
+    this.logRequest(uri, method, filePath, false, metadata.status, req.body, req.query, req.headers);
+    this.sendMockResponse(res, filePath, mimeType, extension, metadata);
   }
 
-  sendMockResponse(res, filePath, mimeType, extension) {
+  sendMockResponse(res, filePath, mimeType, extension, metadata) {
     try {
-      const metadata = this.parseFileMetadata(filePath);
+      if (!metadata) {
+        metadata = this.parseFileMetadata(filePath);
+      }
       const isBinary = isBinaryType(extension);
       const isJson = extension === 'json';
 
@@ -456,6 +468,9 @@ class Mocklab {
   }
 
   setupRoutes() {
+    this.app.use(express.json());
+    this.app.use(express.urlencoded({ extended: true }));
+
     const methods = ['get', 'post', 'put', 'delete', 'patch'];
     const self = this;
 

@@ -108,6 +108,11 @@ class ControlPanel {
       res.json({ ok: true });
     });
 
+    this.app.post('/clear-history', (req, res) => {
+      global.mocklabRequestHistory = [];
+      res.json({ ok: true });
+    });
+
     // Serve the SPA
     this.app.get('*', (req, res) => res.send(this.getHTML()));
   }
@@ -251,6 +256,7 @@ class ControlPanel {
   }
   .btn-refresh:hover { color: var(--accent); border-color: var(--accent); }
   .btn-refresh.spin svg { animation: rot .5s linear infinite; }
+  .btn-clear:hover { color: var(--red); border-color: var(--red); }
   @keyframes rot { to { transform: rotate(360deg); } }
 
   /* Entries */
@@ -381,6 +387,9 @@ class ControlPanel {
           </svg>
           REFRESH
         </button>
+        <button class="btn-refresh btn-clear" @click="clearHistory" title="Clear request history">
+          CLEAR
+        </button>
       </div>
 
       <div class="log-list">
@@ -487,6 +496,10 @@ createApp({
 
     const clearOverlay = () => { selectedOverlay.value = ''; applyOverlay(); };
 
+    const clearHistory = () => {
+      fetch('/clear-history', { method: 'POST' });
+    };
+
     // Refresh = collapse open row + re-render list (data is always live via SSE)
     const refresh = () => {
       refreshing.value = true;
@@ -516,7 +529,7 @@ createApp({
       history, overlays, currentOverlay, selectedOverlay,
       methodFilter, search, connected, refreshing, openId, toast,
       filteredHistory, errorCount, successCount, uniquePaths,
-      applyOverlay, clearOverlay, refresh, fmt, hasContent
+      applyOverlay, clearOverlay, refresh, clearHistory, fmt, hasContent
     };
   }
 }).mount('#app');

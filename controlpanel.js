@@ -189,6 +189,38 @@ class ControlPanel {
     text-transform: uppercase; color: var(--text-dimmer); margin-bottom: 11px;
   }
 
+  /* Overlay label row */
+  .ov-label-row {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 11px;
+  }
+  .ov-label-row .sb-label { margin-bottom: 0; }
+  .btn-ov-filter {
+    background: transparent; border: 1px solid transparent; border-radius: var(--r-sm);
+    color: var(--text-dimmer); cursor: pointer; padding: 2px 5px; line-height: 1;
+    transition: color .15s, border-color .15s;
+  }
+  .btn-ov-filter:hover { color: var(--text); border-color: var(--border-hi); }
+  .btn-ov-filter.on { color: var(--accent); border-color: var(--accent); }
+
+  /* Overlay filter */
+  .ov-filter-wrap { position: relative; margin-bottom: 6px; }
+  .ov-filter {
+    width: 100%; font-family: var(--mono); font-size: 12px;
+    padding: 6px 28px 6px 10px; background: var(--surface2);
+    border: 1px solid var(--border-hi); border-radius: var(--r);
+    color: var(--text); outline: none; transition: border-color .15s;
+    box-sizing: border-box;
+  }
+  .ov-filter::placeholder { color: var(--text-dimmer); }
+  .ov-filter:focus { border-color: var(--accent); }
+  .ov-filter-clear {
+    position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+    background: transparent; border: none; color: var(--text-dimmer);
+    cursor: pointer; font-size: 13px; line-height: 1; padding: 0;
+    transition: color .15s;
+  }
+  .ov-filter-clear:hover { color: var(--text); }
+
   /* Overlay select */
   .ov-select {
     width: 100%; font-family: var(--mono); font-size: 12px;
@@ -345,10 +377,21 @@ class ControlPanel {
     <aside>
       <!-- Overlay -->
       <div class="sb-block">
-        <div class="sb-label">Overlay</div>
+        <div class="ov-label-row">
+          <div class="sb-label">Overlay</div>
+          <button class="btn-ov-filter" :class="{ on: showOverlayFilter }" @click="showOverlayFilter = !showOverlayFilter" title="Filter by name">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M1 2.5h10M3 6h6M5 9.5h2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+        <div v-if="showOverlayFilter" class="ov-filter-wrap">
+          <input class="ov-filter" v-model="overlayFilter" placeholder="Filter by name…" />
+          <button v-if="overlayFilter" class="ov-filter-clear" @click="overlayFilter = ''" title="Clear filter">✕</button>
+        </div>
         <select class="ov-select" v-model="selectedOverlay" @change="applyOverlay">
           <option value="">— none —</option>
-          <option v-for="ov in overlays" :key="ov" :value="ov">{{ ov }}</option>
+          <option v-for="ov in filteredOverlays" :key="ov" :value="ov">{{ ov }}</option>
         </select>
         <div class="ov-active">
           <template v-if="currentOverlay">
@@ -446,6 +489,8 @@ createApp({
     const selectedOverlay = ref('');
     const methodFilter = ref('ALL');
     const search = ref('');
+    const overlayFilter = ref('');
+    const showOverlayFilter = ref(false);
     const connected = ref(false);
     const refreshing = ref(false);
     const openId = ref(null);
@@ -508,6 +553,12 @@ createApp({
       setTimeout(() => refreshing.value = false, 500);
     };
 
+    const filteredOverlays = computed(() => {
+      const q = overlayFilter.value.trim().toLowerCase();
+      if (!q) return overlays.value;
+      return overlays.value.filter(ov => ov.toLowerCase().includes(q));
+    });
+
     const filteredHistory = computed(() => {
       let h = history.value;
       if (methodFilter.value !== 'ALL') h = h.filter(e => e.method === methodFilter.value);
@@ -527,8 +578,8 @@ createApp({
 
     return {
       history, overlays, currentOverlay, selectedOverlay,
-      methodFilter, search, connected, refreshing, openId, toast,
-      filteredHistory, errorCount, successCount, uniquePaths,
+      methodFilter, search, overlayFilter, showOverlayFilter, connected, refreshing, openId, toast,
+      filteredHistory, filteredOverlays, errorCount, successCount, uniquePaths,
       applyOverlay, clearOverlay, refresh, clearHistory, fmt, hasContent
     };
   }

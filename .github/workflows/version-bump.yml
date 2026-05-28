@@ -1,0 +1,76 @@
+name: Bump version
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump:
+    # On PR events, only run when the PR was actually merged.
+    # On manual (workflow_dispatch) runs, always run.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          # Token is needed so the subsequent `git push` is authenticated
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Decide bump type
+        id: bump
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          MANUAL_TYPE: ${{ inputs.bump_type }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "type=$MANUAL_TYPE" >> "$GITHUB_OUTPUT"
+          elif echo "$PR_TITLE" | grep -qi '^\[MAJOR\]'; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif echo "$PR_TITLE" | grep -qi '^\[MINOR\]'; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        id: version
+        run: |
+          # tag-version-prefix="" → tag is "1.3.2" instead of "v1.3.2"
+          # %s in the message is replaced by the new version (e.g. "1.3.2")
+          NEW_VERSION=$(npm version ${{ steps.bump.outputs.type }} \
+            --tag-version-prefix="" \
+            -m "Version %s")
+          echo "new=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Push commit and tag
+        run: |
+          git push origin main --follow-tags

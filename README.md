@@ -173,6 +173,22 @@ Overlays allow you to override specific mocks for different testing scenarios wi
 ```
 npm run mock -- --overlay=user-error
 ```
-For url `GET /auth` mock server will check:\
+For url `GET /auth` mock server will check:
 1. `overlays/user-error/auth.json` 
 2. `mocks/auth.json`
+
+# Control Panel
+
+Mocklab ships with a web-based Control Panel that starts automatically alongside the mock server. It listens on the next port after the mocklab port — so if mocklab runs on 3333, the Control Panel is available at http://localhost:3334.
+
+<img width="1074" height="703" alt="mocklab-controlpanel" src="https://github.com/user-attachments/assets/eba3c8e4-324e-4616-a706-0c577e0f11db" />
+
+From the panel you can:
+
+- Switch overlays without restart.
+- Filter overlays by name when the list is long.
+- Watch requests in real time.
+- Inspect request details.
+- Filter the history by HTTP method or by typing a search query to match the URI.
+- Clear the history.
+

@@ -16,6 +16,11 @@ on:
           - minor
           - major
 
+env:
+  # Run JS-based actions (checkout, setup-node) on Node 24 to silence the
+  # Node 20 deprecation warning until v5 of those actions ships.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 permissions:
   contents: write
 

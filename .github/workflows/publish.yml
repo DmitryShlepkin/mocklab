@@ -4,6 +4,11 @@ on:
   release:
     types: [created]
 
+env:
+  # Run JS-based actions (checkout, setup-node) on Node 24 to silence the
+  # Node 20 deprecation warning until v5 of those actions ships.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+
 jobs:
   publish:
     runs-on: ubuntu-latest
@@ -18,5 +23,5 @@ jobs:
           node-version: 24
           registry-url: https://registry.npmjs.org/
       - run: npm install -g npm@latest
-      - run: npm ci
+      - run: npm install
       - run: npm publish --provenance --access public

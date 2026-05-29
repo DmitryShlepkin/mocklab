@@ -89,7 +89,25 @@ class Mocklab {
     return escaped;
   }
 
-  logRequest(uri, method, filePath, error, status, body, query, headers) {
+  prepareResponseData(filePath, mimeType, extension) {
+    const headers = { 'content-type': mimeType };
+    let body = null;
+    try {
+      if (isBinaryType(extension)) {
+        body = '[binary content]';
+      } else if (extension === 'json') {
+        const content = fs.readFileSync(filePath, 'utf8');
+        body = JSON.parse(content);
+      } else {
+        body = fs.readFileSync(filePath, 'utf8');
+      }
+    } catch (err) {
+      body = null;
+    }
+    return { headers, body };
+  }
+
+  logRequest(uri, method, filePath, error, status, body, query, headers, responseHeaders, responseBody) {
     let relativeFilePath = '';
 
     if (filePath) {
@@ -133,7 +151,9 @@ class Mocklab {
       error: error,
       body: (body && Object.keys(body).length > 0) ? body : null,
       query: (query && Object.keys(query).length > 0) ? query : null,
-      headers: (filteredHeaders && Object.keys(filteredHeaders).length > 0) ? filteredHeaders : null
+      headers: (filteredHeaders && Object.keys(filteredHeaders).length > 0) ? filteredHeaders : null,
+      responseHeaders: (responseHeaders && Object.keys(responseHeaders).length > 0) ? responseHeaders : null,
+      responseBody: (responseBody !== undefined && responseBody !== null) ? responseBody : null
     };
 
     global.mocklabRequestHistory.unshift(requestEntry);
@@ -417,17 +437,20 @@ class Mocklab {
     const filePath = this.findMockFile(pathWithoutExtension, req.query, method, extension);
 
     if (!filePath) {
-      this.logRequest(uri, method, null, true, 404, req.body, req.query, req.headers);
-      return res.status(404).json({
+      const notFoundBody = {
         error: 'Mock file not found',
         path: requestPath,
         query: req.query,
         method: method
-      });
+      };
+      const notFoundHeaders = { 'content-type': 'application/json' };
+      this.logRequest(uri, method, null, true, 404, req.body, req.query, req.headers, notFoundHeaders, notFoundBody);
+      return res.status(404).json(notFoundBody);
     }
 
     const metadata = this.parseFileMetadata(filePath);
-    this.logRequest(uri, method, filePath, false, metadata.status, req.body, req.query, req.headers);
+    const { headers: responseHeaders, body: responseBody } = this.prepareResponseData(filePath, mimeType, extension);
+    this.logRequest(uri, method, filePath, false, metadata.status, req.body, req.query, req.headers, responseHeaders, responseBody);
     this.sendMockResponse(res, filePath, mimeType, extension, metadata);
   }
 

@@ -345,6 +345,7 @@ class ControlPanel {
   }
   .d-val::-webkit-scrollbar { width: 4px; }
   .d-val::-webkit-scrollbar-thumb { background: #ffffff0e; border-radius: 2px; }
+  .d-val-tall { max-height: 280px; }
 
   .empty {
     flex: 1; display: flex; flex-direction: column;
@@ -462,8 +463,16 @@ class ControlPanel {
                 <div class="d-val">{{ fmt(entry.query) }}</div>
               </div>
               <div class="d-row" v-if="hasContent(entry.headers)">
-                <span class="d-label">HEADERS</span>
+                <span class="d-label">REQUEST HEADERS</span>
                 <div class="d-val">{{ fmt(entry.headers) }}</div>
+              </div>
+              <div class="d-row" v-if="hasContent(entry.responseHeaders)">
+                <span class="d-label">RESPONSE HEADERS</span>
+                <div class="d-val">{{ fmt(entry.responseHeaders) }}</div>
+              </div>
+              <div class="d-row" v-if="hasContent(entry.responseBody)">
+                <span class="d-label">RESPONSE BODY</span>
+                <div class="d-val d-val-tall">{{ fmt(entry.responseBody) }}</div>
               </div>
             </div>
           </div>

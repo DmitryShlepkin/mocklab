@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const { extractExtension, removeExtension } = require('./mime');
 
 class ControlPanel {
   constructor(mocklabInstance) {
@@ -29,10 +30,71 @@ class ControlPanel {
     }
   }
 
+  // Compute where a mock file should live so the given request resolves to it.
+  // Mirrors the router resolution rules in mocklab.js (path → folder/file,
+  // method suffix, query-param filenames).
+  computeMockFilePath(uri, method) {
+    method = (method || 'GET').toString().toUpperCase();
+
+    const qIndex = uri.indexOf('?');
+    const rawPath = qIndex >= 0 ? uri.slice(0, qIndex) : uri;
+    const queryString = qIndex >= 0 ? uri.slice(qIndex + 1) : '';
+
+    let requestPath = (rawPath === '/' || rawPath === '') ? '/index' : rawPath;
+    if (!requestPath.startsWith('/')) requestPath = '/' + requestPath;
+
+    const ext = extractExtension(requestPath) || 'json';
+    const pathWithoutExt = removeExtension(requestPath);
+    const methodSuffix = method !== 'GET' ? '-method-' + method.toLowerCase() : '';
+
+    // Use the first query param to build a [name] / [name=value] filename
+    let firstParam = null;
+    if (queryString) {
+      const pairs = queryString.split('&').filter(Boolean);
+      if (pairs.length > 0) {
+        const eq = pairs[0].indexOf('=');
+        firstParam = eq >= 0
+          ? { name: pairs[0].slice(0, eq), value: pairs[0].slice(eq + 1) }
+          : { name: pairs[0], value: '' };
+      }
+    }
+
+    if (firstParam && firstParam.name) {
+      const fname = firstParam.value !== ''
+        ? '[' + firstParam.name + '=' + firstParam.value + ']'
+        : '[' + firstParam.name + ']';
+      return path.join(pathWithoutExt, fname + methodSuffix + '.' + ext);
+    }
+
+    return pathWithoutExt + methodSuffix + '.' + ext;
+  }
+
+  // Does a mock file already exist at the location this request maps to?
+  mockFileExists(uri, method) {
+    try {
+      const relPath = this.computeMockFilePath(uri, method);
+      const targetAbs = path.resolve(path.join(this.mocklab.mockDir, relPath));
+      const mockRoot = path.resolve(this.mocklab.mockDir);
+      if (targetAbs !== mockRoot && !targetAbs.startsWith(mockRoot + path.sep)) return false;
+      return fs.existsSync(targetAbs);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // History for the client, with a `mockExists` flag on not-found entries so the
+  // "Add Mock" button can stay hidden once a mock has been created (survives reloads).
+  serializeHistory() {
+    const history = global.mocklabRequestHistory || [];
+    return history.map(e =>
+      e.filePath ? e : { ...e, mockExists: this.mockFileExists(e.uri, e.method) }
+    );
+  }
+
   // Push current global state to all connected SSE clients
   broadcast() {
     const payload = JSON.stringify({
-      history: global.mocklabRequestHistory || [],
+      history: this.serializeHistory(),
       overlay: global.mocklabOverlay || null,
       overlays: this.getAvailableOverlays()
     });
@@ -86,7 +148,7 @@ class ControlPanel {
 
       // Send current state immediately on connect
       const payload = JSON.stringify({
-        history: global.mocklabRequestHistory || [],
+        history: this.serializeHistory(),
         overlay: global.mocklabOverlay || null,
         overlays: this.getAvailableOverlays()
       });
@@ -111,6 +173,48 @@ class ControlPanel {
     this.app.post('/clear-history', (req, res) => {
       global.mocklabRequestHistory = [];
       res.json({ ok: true });
+    });
+
+    // Create a mock file from the panel — stored under mocks/ at the location
+    // that the originating request would resolve to.
+    this.app.post('/add-mock', (req, res) => {
+      const { uri, method, content } = req.body || {};
+
+      if (!uri || typeof uri !== 'string') {
+        return res.status(400).json({ ok: false, error: 'Missing request URI' });
+      }
+
+      // Validate JSON before storing
+      let parsed;
+      try {
+        parsed = JSON.parse(content);
+      } catch (e) {
+        return res.status(400).json({ ok: false, error: 'Invalid JSON: ' + e.message });
+      }
+
+      const mockDir = this.mocklab.mockDir;
+      const relPath = this.computeMockFilePath(uri, method);
+      const targetAbs = path.resolve(path.join(mockDir, relPath));
+
+      // Guard against path traversal — the file must stay inside mocks/
+      const mockRoot = path.resolve(mockDir);
+      if (targetAbs !== mockRoot && !targetAbs.startsWith(mockRoot + path.sep)) {
+        return res.status(400).json({ ok: false, error: 'Resolved path is outside the mocks folder' });
+      }
+
+      try {
+        fs.mkdirSync(path.dirname(targetAbs), { recursive: true });
+        fs.writeFileSync(targetAbs, JSON.stringify(parsed, null, 2) + '\n');
+      } catch (e) {
+        return res.status(500).json({ ok: false, error: 'Failed to write file: ' + e.message });
+      }
+
+      const displayPath = path.relative(process.cwd(), targetAbs);
+      console.log('Mock created: ' + displayPath);
+
+      // Re-push history so every matching not-found entry hides its button now
+      this.broadcast();
+      res.json({ ok: true, path: displayPath });
     });
 
     // Serve the SPA
@@ -363,6 +467,84 @@ class ControlPanel {
     animation: tin .2s ease; z-index: 999;
   }
   @keyframes tin { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  /* Add Mock button (in detail footer) */
+  .detail-foot { margin-top: 2px; }
+  .btn-add-mock {
+    align-self: flex-start; font-family: var(--mono); font-size: 11px; letter-spacing: .04em;
+    padding: 7px 14px; border-radius: var(--r-sm); cursor: pointer;
+    background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-glow);
+    transition: background .15s, border-color .15s;
+  }
+  .btn-add-mock:hover { background: #7fff6e30; border-color: var(--accent); }
+
+  /* Add Mock modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; z-index: 1000;
+    background: #000000aa; backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    animation: tin .15s ease;
+  }
+  .modal {
+    width: 100%; max-width: 560px; max-height: 90vh; display: flex; flex-direction: column;
+    background: var(--surface); border: 1px solid var(--border-hi); border-radius: var(--r);
+    box-shadow: 0 16px 50px #000000aa; overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+  }
+  .modal-title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .15em;
+    color: var(--accent); flex: 1;
+  }
+  .modal-close {
+    background: transparent; border: none; color: var(--text-dimmer);
+    cursor: pointer; font-size: 15px; line-height: 1; padding: 2px 4px; transition: color .15s;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .modal-meta {
+    display: flex; flex-direction: column; gap: 6px;
+    font-family: var(--mono); font-size: 11px;
+  }
+  .modal-meta-row { display: flex; align-items: center; gap: 8px; }
+  .modal-uri { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .modal-dest {
+    display: flex; gap: 8px; align-items: baseline;
+    font-family: var(--mono); font-size: 11px; color: var(--text-dimmer);
+  }
+  .modal-dest b { color: var(--accent); font-weight: 400; word-break: break-all; }
+  .modal-input {
+    width: 100%; min-height: 220px; resize: vertical;
+    font-family: var(--mono); font-size: 12px; line-height: 1.5;
+    padding: 10px 12px; background: var(--bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: var(--r-sm);
+    outline: none; transition: border-color .15s;
+  }
+  .modal-input:focus { border-color: var(--border-hi); }
+  .modal-input.invalid { border-color: var(--red); }
+  .modal-error {
+    font-family: var(--mono); font-size: 11px; color: var(--red);
+    background: var(--red-dim); border: 1px solid #ff5e5e30;
+    border-radius: var(--r-sm); padding: 7px 10px; word-break: break-word;
+  }
+  .modal-actions {
+    display: flex; justify-content: flex-end; gap: 8px;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .modal-btn {
+    font-family: var(--mono); font-size: 11px; padding: 7px 14px;
+    border-radius: var(--r-sm); cursor: pointer; transition: background .15s, border-color .15s;
+  }
+  .modal-btn-ghost {
+    background: transparent; color: var(--text-dim); border: 1px solid var(--border-hi);
+  }
+  .modal-btn-ghost:hover { color: var(--text); border-color: #ffffff22; }
+  .modal-btn-go {
+    background: var(--accent-dim); color: var(--accent); border: 1px solid var(--accent-glow);
+  }
+  .modal-btn-go:hover { background: #7fff6e30; border-color: var(--accent); }
 </style>
 </head>
 <body>
@@ -474,6 +656,9 @@ class ControlPanel {
                 <span class="d-label">RESPONSE BODY</span>
                 <div class="d-val d-val-tall">{{ fmt(entry.responseBody) }}</div>
               </div>
+              <div class="d-row detail-foot" v-if="!entry.filePath && !entry.mockExists">
+                <button class="btn-add-mock" @click.stop="openAddMock(entry)">+ Add Mock</button>
+              </div>
             </div>
           </div>
         </template>
@@ -484,6 +669,36 @@ class ControlPanel {
       </div>
     </div>
   </main>
+
+  <!-- Add Mock modal -->
+  <div v-if="showAddMock" class="modal-backdrop" @click.self="closeAddMock">
+    <div class="modal">
+      <div class="modal-head">
+        <span class="modal-title">ADD MOCK</span>
+        <button class="modal-close" @click="closeAddMock" title="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-meta">
+          <div class="modal-meta-row">
+            <span class="badge" :class="'b-' + addMockMethod">{{ addMockMethod }}</span>
+            <span class="modal-uri" :title="addMockUri">{{ addMockUri }}</span>
+          </div>
+          <div class="modal-dest">→ <b>{{ addMockTarget }}</b></div>
+        </div>
+        <textarea
+          class="modal-input"
+          :class="{ invalid: addMockError }"
+          v-model="addMockJson"
+          spellcheck="false"
+          placeholder='{\n  "message": "hello"\n}'></textarea>
+        <div v-if="addMockError" class="modal-error">{{ addMockError }}</div>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn modal-btn-ghost" @click="closeAddMock">Cancel</button>
+        <button class="modal-btn modal-btn-go" @click="submitAddMock">Save Mock</button>
+      </div>
+    </div>
+  </div>
 
   <div v-if="toast" class="toast">{{ toast }}</div>
 </div>
@@ -504,6 +719,10 @@ createApp({
     const refreshing = ref(false);
     const openId = ref(null);
     const toast = ref('');
+    const showAddMock = ref(false);
+    const addMockEntry = ref(null);
+    const addMockJson = ref('');
+    const addMockError = ref('');
     let toastTimer = null;
     let es = null;
 
@@ -554,6 +773,94 @@ createApp({
       fetch('/clear-history', { method: 'POST' });
     };
 
+    // Mirror of the server's path resolution — preview where the mock will land
+    const computeTargetPath = (uri, method) => {
+      if (!uri) return '';
+      method = (method || 'GET').toUpperCase();
+      const qIndex = uri.indexOf('?');
+      const rawPath = qIndex >= 0 ? uri.slice(0, qIndex) : uri;
+      const queryString = qIndex >= 0 ? uri.slice(qIndex + 1) : '';
+      let requestPath = (rawPath === '/' || rawPath === '') ? '/index' : rawPath;
+      if (!requestPath.startsWith('/')) requestPath = '/' + requestPath;
+      const extMatch = requestPath.match(/\.([a-z0-9]+)$/i);
+      const ext = extMatch ? extMatch[1] : 'json';
+      const pathWithoutExt = requestPath.replace(/\.[a-z0-9]+$/i, '');
+      const methodSuffix = method !== 'GET' ? '-method-' + method.toLowerCase() : '';
+      let firstParam = null;
+      if (queryString) {
+        const pairs = queryString.split('&').filter(Boolean);
+        if (pairs.length) {
+          const eq = pairs[0].indexOf('=');
+          firstParam = eq >= 0
+            ? { name: pairs[0].slice(0, eq), value: pairs[0].slice(eq + 1) }
+            : { name: pairs[0], value: '' };
+        }
+      }
+      let rel;
+      if (firstParam && firstParam.name) {
+        const fn = firstParam.value !== ''
+          ? '[' + firstParam.name + '=' + firstParam.value + ']'
+          : '[' + firstParam.name + ']';
+        rel = pathWithoutExt + '/' + fn + methodSuffix + '.' + ext;
+      } else {
+        rel = pathWithoutExt + methodSuffix + '.' + ext;
+      }
+      return 'mocks' + rel;
+    };
+
+    const addMockUri    = computed(() => addMockEntry.value ? addMockEntry.value.uri : '');
+    const addMockMethod = computed(() => addMockEntry.value ? addMockEntry.value.method : 'GET');
+    const addMockTarget = computed(() =>
+      addMockEntry.value ? computeTargetPath(addMockEntry.value.uri, addMockEntry.value.method) : ''
+    );
+
+    const openAddMock = entry => {
+      addMockEntry.value = entry;
+      addMockError.value = '';
+      // Seed with the existing response body if it's JSON, otherwise an empty object
+      const seed = entry && entry.responseBody && typeof entry.responseBody === 'object' && entry.status < 400
+        ? entry.responseBody
+        : {};
+      addMockJson.value = JSON.stringify(seed, null, 2);
+      showAddMock.value = true;
+    };
+
+    const closeAddMock = () => {
+      showAddMock.value = false;
+      addMockEntry.value = null;
+      addMockError.value = '';
+    };
+
+    const submitAddMock = async () => {
+      // Validate JSON client-side first
+      try {
+        JSON.parse(addMockJson.value);
+      } catch (e) {
+        addMockError.value = 'Invalid JSON: ' + e.message;
+        return;
+      }
+      try {
+        const resp = await fetch('/add-mock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uri: addMockEntry.value.uri,
+            method: addMockEntry.value.method,
+            content: addMockJson.value
+          })
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+          addMockError.value = data.error || 'Failed to save mock';
+          return;
+        }
+        showToast('Mock saved → ' + data.path);
+        closeAddMock();
+      } catch (e) {
+        addMockError.value = 'Request failed: ' + e.message;
+      }
+    };
+
     // Refresh = collapse open row + re-render list (data is always live via SSE)
     const refresh = () => {
       refreshing.value = true;
@@ -589,7 +896,9 @@ createApp({
       history, overlays, currentOverlay, selectedOverlay,
       methodFilter, search, overlayFilter, showOverlayFilter, connected, refreshing, openId, toast,
       filteredHistory, filteredOverlays, errorCount, successCount, uniquePaths,
-      applyOverlay, clearOverlay, refresh, clearHistory, fmt, hasContent
+      applyOverlay, clearOverlay, refresh, clearHistory, fmt, hasContent,
+      showAddMock, addMockJson, addMockError, addMockUri, addMockMethod, addMockTarget,
+      openAddMock, closeAddMock, submitAddMock
     };
   }
 }).mount('#app');

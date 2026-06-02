@@ -1,8 +1,10 @@
 # Mocklab
 
-Codeless mock server with file-based routing.\
-No code, just JSON files.\
-Mock your API quick.
+Mocklab is a codeless, file-based mock API server powered by Node.js. Mock any HTTP/HTTPS or REST dependency without writing a single line of code — just drop files into a folder and Mocklab turns them into live endpoints, with routes, HTTP methods, status codes, and response delays all driven by filenames.
+
+Match requests by path, query parameters, exact parameter values, or wildcards, and switch between scenarios on the fly using overlays — no restart required. 
+
+A built-in web Control Panel gives you a real-time request log, request/response inspection, overlay switching, and the ability to create new mocks straight from the dashboard. See the README for the full file-naming convention and routing rules.
 
 ## Install
 

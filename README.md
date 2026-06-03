@@ -168,7 +168,24 @@ Overlays allow you to override specific mocks for different testing scenarios wi
 1. Create an `overlays/` folder next to your `mocks/` folder.
 2. Inside `overlays/`, create subfolders for each scenario (e.g., user-error, test, auth-error)
 3. Add mock files with the same structure as your `mocks/` folder.
-4. Activate an overlay via command line or config.
+4. Activate an overlay via command line or config or Control Panel.
+
+## Supported File Formats
+
+| Extension | Content-Type |
+| --------- | ------------------------ |
+| json      | application/json         |
+| xml       | application/xml          |
+| html      | text/html                |
+| txt       | text/plain               |
+| csv       | text/csv                 |
+| js        | application/javascript   |
+| css       | text/css                 |
+| png       | image/png                |
+| jpg       | image/jpeg               |
+| jpeg      | image/jpeg               |
+| gif       | image/gif                |
+| pdf       | application/pdf          |
 
 #### Usage:
 

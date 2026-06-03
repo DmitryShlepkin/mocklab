@@ -51,8 +51,30 @@ Configuration options:
 - `overlay` - Active overlay name (default: none)
 - `historyLimit` - Number of requests to keep in history (default: `100`)
 - `controlPanel` - Enable the web Control Panel (default: `true`). Set to `false` to turn it off.
+- `https` - Serve over HTTPS (default: HTTP). Provide `key` and `cert` file paths.
 
 If `mock.conf` doesn't exist, defaults to `localhost:3232` with no overlay.
+
+#### HTTPS
+
+To run the mock server (and Control Panel) over HTTPS, add an `https` block with paths to your TLS key and certificate:
+
+```json
+{
+  "https": {
+    "key": "./certs/key.pem",
+    "cert": "./certs/cert.pem"
+  }
+}
+```
+
+Paths are resolved relative to the project root. If the key/cert can't be read, Mocklab logs a warning and falls back to HTTP.
+
+You can generate a self-signed certificate for local development with:
+
+```
+openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.pem -days 365 -subj "/CN=localhost"
+```
 
 ## Run Server
 

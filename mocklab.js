@@ -1,6 +1,8 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const https = require('https');
 const { patterns, buildExactFilePattern, buildPatternWithExtension } = require('./patterns');
 const { getMimeType, isBinaryType, extractExtension, removeExtension } = require('./mime');
 
@@ -18,6 +20,8 @@ class Mocklab {
   constructor() {
     this.app = express();
     this.config = this.loadConfig();
+    this.httpsOptions = this.getHttpsOptions();
+    this.protocol = this.httpsOptions ? 'https' : 'http';
     this.mockDir = path.join(process.cwd(), 'mocks');
     this.overlayBaseDir = path.join(process.cwd(), 'overlays');
 
@@ -52,6 +56,31 @@ class Mocklab {
     }
 
     return defaultConfig;
+  }
+
+  // Read TLS key/cert from config when HTTPS is enabled.
+  // Config shape: "https": { "key": "./key.pem", "cert": "./cert.pem" }
+  // Returns null (plain HTTP) when not configured or on failure.
+  getHttpsOptions() {
+    const cfg = this.config.https;
+    if (!cfg) {
+      return null;
+    }
+
+    if (!cfg.key || !cfg.cert) {
+      console.warn('HTTPS is enabled but "key" and/or "cert" path is missing. Falling back to HTTP.');
+      return null;
+    }
+
+    try {
+      return {
+        key: fs.readFileSync(path.resolve(process.cwd(), cfg.key)),
+        cert: fs.readFileSync(path.resolve(process.cwd(), cfg.cert))
+      };
+    } catch (err) {
+      console.warn('Failed to read HTTPS key/cert: ' + err.message + '. Falling back to HTTP.');
+      return null;
+    }
   }
 
   setupOverlay() {
@@ -508,8 +537,12 @@ class Mocklab {
   start() {
     this.setupRoutes();
 
-    this.app.listen(this.config.port, this.config.host, () => {
-      const url = colors.cyan + 'http://' + this.config.host + ':' + this.config.port + colors.reset;
+    const server = this.httpsOptions
+      ? https.createServer(this.httpsOptions, this.app)
+      : http.createServer(this.app);
+
+    server.listen(this.config.port, this.config.host, () => {
+      const url = colors.cyan + this.protocol + '://' + this.config.host + ':' + this.config.port + colors.reset;
       const mocksPath = colors.cyan + this.mockDir + colors.reset;
       const overlayName = colors.cyan + global.mocklabOverlay + colors.reset;
 

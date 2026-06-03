@@ -1,6 +1,8 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const https = require('https');
 const { extractExtension, removeExtension } = require('./mime');
 
 class ControlPanel {
@@ -224,6 +226,7 @@ class ControlPanel {
   getHTML() {
     const mocklabPort = this.mocklab.config.port || 3232;
     const mocklabHost = this.mocklab.config.host || 'localhost';
+    const mocklabProtocol = this.mocklab.protocol || 'http';
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -553,7 +556,7 @@ class ControlPanel {
     <div class="logo"><div class="logo-dot"></div>MOCKLAB</div>
     <div class="conn-dot" :class="{ off: !connected }" :title="connected ? 'Live' : 'Reconnecting…'"></div>
     <div class="header-sep"></div>
-    <a class="mocklab-link" href="http://${mocklabHost}:${mocklabPort}" target="_blank">↗ mocklab :${mocklabPort}</a>
+    <a class="mocklab-link" href="${mocklabProtocol}://${mocklabHost}:${mocklabPort}" target="_blank">↗ mocklab :${mocklabPort}</a>
   </header>
 
   <main>
@@ -909,9 +912,16 @@ createApp({
 
   start() {
     this.patchGlobals();
-    this.app.listen(this.port, this.host, () => {
+
+    const httpsOptions = this.mocklab.httpsOptions;
+    const protocol = httpsOptions ? 'https' : 'http';
+    const server = httpsOptions
+      ? https.createServer(httpsOptions, this.app)
+      : http.createServer(this.app);
+
+    server.listen(this.port, this.host, () => {
       const c = { reset: '\x1b[0m', cyan: '\x1b[36m' };
-      console.log('Control panel running at ' + c.cyan + 'http://' + this.host + ':' + this.port + c.reset);
+      console.log('Control panel running at ' + c.cyan + protocol + '://' + this.host + ':' + this.port + c.reset);
     });
   }
 }

@@ -40,7 +40,8 @@ Create mock.conf
   "host": "localhost",
   "port": 3232,
   "overlay": "test",
-  "historyLimit": 100
+  "historyLimit": 100,
+  "controlPanel": true
 }
 ```
 Configuration options:
@@ -49,6 +50,7 @@ Configuration options:
 - `port` - Server port (default: 3232)
 - `overlay` - Active overlay name (default: none)
 - `historyLimit` - Number of requests to keep in history (default: `100`)
+- `controlPanel` - Enable the web Control Panel (default: `true`). Set to `false` to turn it off.
 
 If `mock.conf` doesn't exist, defaults to `localhost:3232` with no overlay.
 

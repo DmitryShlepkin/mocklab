@@ -37,7 +37,8 @@ class Mocklab {
     const defaultConfig = {
       host: 'localhost',
       port: 3232,
-      historyLimit: 100
+      historyLimit: 100,
+      controlPanel: true
     };
 
     try {

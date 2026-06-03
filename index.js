@@ -12,8 +12,12 @@ if (require.main === module) {
   const server = new Mocklab();
   server.start();
 
-  const panel = new ControlPanel(server);
-  panel.start();
+  if (server.config.controlPanel !== false) {
+    const panel = new ControlPanel(server);
+    panel.start();
+  } else {
+    console.log('Control panel disabled');
+  }
 }
 
 module.exports = Mocklab;

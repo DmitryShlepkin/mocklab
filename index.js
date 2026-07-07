@@ -8,6 +8,9 @@ global.mocklabOverlay = null;
 // Global request history array
 global.mocklabRequestHistory = [];
 
+// Global sequence rotation state (round-robin index per sequenced mock group)
+global.mocklabSequenceState = {};
+
 if (require.main === module) {
   const server = new Mocklab();
   server.start();

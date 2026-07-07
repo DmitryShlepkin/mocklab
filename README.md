@@ -87,7 +87,7 @@ npm run mock
 #### File Naming Convention
 
 Filename determines the response behavior:\
-`{name}-[method-{method}]-[delay{delay(ms)}]-[status-{code}].json`
+`{name}-[method-{method}]-[delay{delay(ms)}]-[status-{code}]-[sequence-{number}].json`
 
 Name before file extension is used for url:\
 `auth.json` → `/auth`
@@ -146,6 +146,18 @@ Add `delay-{delay-ms}` to filename, to define response delay:
 `auth-delay-2000.json`  → `/auth.json` will respond after 2s delay.
 
 - Delay: Maximum 10 minutes (600000ms) - longer values are capped.
+
+#### Sequenced responses
+
+Add `sequence-{number}` to a group of otherwise-identical mocks to rotate through them on successive requests to the same endpoint:\
+`auth-sequence-1.json` → 1st request to `/auth`\
+`auth-sequence-2.json` → 2nd request to `/auth`
+
+After the last file in the sequence is served, the rotation wraps back to `sequence-1`. Sequence order is based on the number in the filename, not creation order or method/delay/status.
+
+Sequencing composes with method, delay, status, query-param, index, and wildcard matching — the rotation is scoped to whichever group of files matches the same route:\
+`auth-method-post-sequence-1.json` / `auth-method-post-sequence-2.json` → rotates only for `POST /auth`\
+`[id=1]-sequence-1.json` / `[id=1]-sequence-2.json` → rotates only for `?id=1`
 
 #### Disable/Enable mocks
 

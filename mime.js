@@ -10,11 +10,12 @@ const mimeTypes = {
   'pdf': 'application/pdf',
   'csv': 'text/csv',
   'js': 'application/javascript',
-  'css': 'text/css'
+  'css': 'text/css',
+  'ico': 'image/x-icon'
 };
 
 // Binary file types that should be read as buffers
-const binaryTypes = ['png', 'jpeg', 'jpg', 'gif', 'pdf'];
+const binaryTypes = ['png', 'jpeg', 'jpg', 'gif', 'pdf', 'ico'];
 
 function getMimeType(extension) {
   const ext = extension ? extension.toLowerCase() : 'json';

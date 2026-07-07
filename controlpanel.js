@@ -165,6 +165,9 @@ class ControlPanel {
     this.app.post('/set-overlay', (req, res) => {
       const { overlay } = req.body;
       global.mocklabOverlay = (overlay && overlay.trim()) ? overlay.trim() : null;
+      if (global.mocklabOverlay) {
+        this.mocklab.resetSequenceStateForOverlay(global.mocklabOverlay);
+      }
       console.log(global.mocklabOverlay
         ? 'Overlay set: ' + global.mocklabOverlay
         : 'Overlay cleared'

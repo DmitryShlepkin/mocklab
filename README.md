@@ -222,6 +222,7 @@ Overlays allow you to override specific mocks for different testing scenarios wi
 | jpeg      | image/jpeg               |
 | gif       | image/gif                |
 | pdf       | application/pdf          |
+| ico       | image/x-icon             |
 
 #### Usage:
 

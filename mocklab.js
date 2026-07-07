@@ -32,6 +32,9 @@ class Mocklab {
     if (!global.mocklabRequestHistory) {
       global.mocklabRequestHistory = [];
     }
+    if (!global.mocklabSequenceState) {
+      global.mocklabSequenceState = {};
+    }
 
     this.setupOverlay();
   }
@@ -117,6 +120,26 @@ class Mocklab {
     const specialChars = patterns.regexSpecialChars;
     const escaped = str.replace(specialChars, '\\$&');
     return escaped;
+  }
+
+  // Picks a file from a set of candidates that all match the same route.
+  // Candidates tagged with a sequence number rotate round-robin (tracked per
+  // stateKey in global.mocklabSequenceState); the first plain candidate wins otherwise.
+  resolveSequencedMatch(candidates, stateKey) {
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const sequenced = candidates.filter(c => c.sequence !== null);
+    if (sequenced.length === 0) {
+      return candidates[0].file;
+    }
+
+    sequenced.sort((a, b) => a.sequence - b.sequence);
+    const state = global.mocklabSequenceState;
+    const index = (state[stateKey] || 0) % sequenced.length;
+    state[stateKey] = index + 1;
+    return sequenced[index].file;
   }
 
   prepareResponseData(filePath, mimeType, extension) {
@@ -254,47 +277,90 @@ class Mocklab {
       const queryParamPattern = buildPatternWithExtension(patterns.queryParam, ext);
 
       // Priority 1: Check for exact param value match [paramName=value].ext
-      const exactParamMatch = files.find(function(file) {
+      // First pass mirrors the old .find() to pick which paramName=value wins,
+      // second pass gathers every file sharing that same paramName=value so a
+      // sequence set (e.g. [id=1]-sequence-1.json, [id=1]-sequence-2.json) rotates as a group.
+      const exactParamWinner = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
-
         const matchResult = file.match(exactParamPattern);
-
-        if (matchResult) {
-          const paramName = matchResult[1];
-          const paramValue = matchResult[2];
-          const fileMethod = matchResult[4] ? matchResult[4].toUpperCase() : 'GET';
-
-          return queryParams.hasOwnProperty(paramName) &&
-                 String(queryParams[paramName]) === paramValue &&
-                 fileMethod === method;
+        if (!matchResult) {
+          return false;
         }
-        return false;
+        const fileMethod = matchResult[4] ? matchResult[4].toUpperCase() : 'GET';
+        return queryParams.hasOwnProperty(matchResult[1]) &&
+               String(queryParams[matchResult[1]]) === matchResult[2] &&
+               fileMethod === method;
       });
 
-      if (exactParamMatch) {
-        return path.join(queryDir, exactParamMatch);
+      if (exactParamWinner) {
+        const winnerMatch = exactParamWinner.match(exactParamPattern);
+        const paramName = winnerMatch[1];
+        const paramValue = winnerMatch[2];
+
+        const exactParamCandidates = files.reduce(function(acc, file) {
+          if (file.startsWith('_')) {
+            return acc;
+          }
+          const matchResult = file.match(exactParamPattern);
+          if (matchResult && matchResult[1] === paramName && matchResult[2] === paramValue) {
+            const fileMethod = matchResult[4] ? matchResult[4].toUpperCase() : 'GET';
+            if (fileMethod === method) {
+              acc.push({ file: file, sequence: matchResult[8] ? parseInt(matchResult[8], 10) : null });
+            }
+          }
+          return acc;
+        }, []);
+
+        const exactParamMatch = this.resolveSequencedMatch(
+          exactParamCandidates,
+          queryDir + '|param=' + paramName + '=' + paramValue + '|' + method
+        );
+
+        if (exactParamMatch) {
+          return path.join(queryDir, exactParamMatch);
+        }
       }
 
       // Priority 2: Check for any param name match [paramName].ext
-      const queryParamMatch = files.find(function(file) {
+      const queryParamWinner = files.find(function(file) {
         if (file.startsWith('_')) {
           return false;
         }
-
         const matchResult = file.match(queryParamPattern);
-
-        if (matchResult && matchResult[1] !== '*') {
-          const paramName = matchResult[1];
-          const fileMethod = matchResult[3] ? matchResult[3].toUpperCase() : 'GET';
-          return queryParams.hasOwnProperty(paramName) && fileMethod === method;
+        if (!matchResult || matchResult[1] === '*') {
+          return false;
         }
-        return false;
+        const fileMethod = matchResult[3] ? matchResult[3].toUpperCase() : 'GET';
+        return queryParams.hasOwnProperty(matchResult[1]) && fileMethod === method;
       });
 
-      if (queryParamMatch) {
-        return path.join(queryDir, queryParamMatch);
+      if (queryParamWinner) {
+        const paramName = queryParamWinner.match(queryParamPattern)[1];
+
+        const queryParamCandidates = files.reduce(function(acc, file) {
+          if (file.startsWith('_')) {
+            return acc;
+          }
+          const matchResult = file.match(queryParamPattern);
+          if (matchResult && matchResult[1] === paramName) {
+            const fileMethod = matchResult[3] ? matchResult[3].toUpperCase() : 'GET';
+            if (fileMethod === method) {
+              acc.push({ file: file, sequence: matchResult[7] ? parseInt(matchResult[7], 10) : null });
+            }
+          }
+          return acc;
+        }, []);
+
+        const queryParamMatch = this.resolveSequencedMatch(
+          queryParamCandidates,
+          queryDir + '|param=' + paramName + '|' + method
+        );
+
+        if (queryParamMatch) {
+          return path.join(queryDir, queryParamMatch);
+        }
       }
 
     } catch (err) {
@@ -323,17 +389,21 @@ class Mocklab {
       const files = fs.readdirSync(indexDir);
       const indexPattern = buildPatternWithExtension(patterns.index, ext);
 
-      const indexMatch = files.find(function(file) {
+      const candidates = files.reduce(function(acc, file) {
         if (file.startsWith('_')) {
-          return false;
+          return acc;
         }
         const match = file.match(indexPattern);
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
-          return fileMethod === method;
+          if (fileMethod === method) {
+            acc.push({ file: file, sequence: match[6] ? parseInt(match[6], 10) : null });
+          }
         }
-        return false;
-      });
+        return acc;
+      }, []);
+
+      const indexMatch = this.resolveSequencedMatch(candidates, indexDir + '|index|' + method);
 
       if (indexMatch) {
         return path.join(indexDir, indexMatch);
@@ -365,23 +435,27 @@ class Mocklab {
     try {
       const files = fs.readdirSync(baseDir);
       const self = this;
+      const escapedName = this.escapeRegex(baseName);
+      const patternString = buildExactFilePattern(escapedName, ext);
+      const regex = new RegExp(patternString, 'i');
 
-      const exactMatch = files.find(function(file) {
+      const candidates = files.reduce(function(acc, file) {
         if (file.startsWith('_')) {
-          return false;
+          return acc;
         }
 
-        const escapedName = self.escapeRegex(baseName);
-        const patternString = buildExactFilePattern(escapedName, ext);
-        const regex = new RegExp(patternString, 'i');
         const match = file.match(regex);
 
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
-          return fileMethod === method;
+          if (fileMethod === method) {
+            acc.push({ file: file, sequence: match[6] ? parseInt(match[6], 10) : null });
+          }
         }
-        return false;
-      });
+        return acc;
+      }, []);
+
+      const exactMatch = self.resolveSequencedMatch(candidates, baseDir + '|' + baseName + '|' + method);
 
       if (exactMatch) {
         return path.join(baseDir, exactMatch);
@@ -407,20 +481,23 @@ class Mocklab {
 
       const wildcardPattern = buildPatternWithExtension(patterns.wildcard, ext);
 
-      const wildcardMatch = files.find(function(file) {
+      const candidates = files.reduce(function(acc, file) {
         if (file.startsWith('_')) {
-          return false;
+          return acc;
         }
 
         const match = file.match(wildcardPattern);
 
         if (match) {
           const fileMethod = match[2] ? match[2].toUpperCase() : 'GET';
-          const methodMatches = fileMethod === method;
-          return methodMatches;
+          if (fileMethod === method) {
+            acc.push({ file: file, sequence: match[6] ? parseInt(match[6], 10) : null });
+          }
         }
-        return false;
-      });
+        return acc;
+      }, []);
+
+      const wildcardMatch = this.resolveSequencedMatch(candidates, baseDir + '|wildcard|' + method);
 
       if (wildcardMatch) {
         return path.join(baseDir, wildcardMatch);

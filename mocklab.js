@@ -92,6 +92,7 @@ class Mocklab {
       const arg = args[i];
       if (arg.startsWith('--overlay=')) {
         global.mocklabOverlay = arg.substring(10);
+        this.resetSequenceStateForOverlay(global.mocklabOverlay);
         console.log('Overlay from command line: ' + colors.cyan + global.mocklabOverlay + colors.reset);
         return;
       }
@@ -99,8 +100,28 @@ class Mocklab {
 
     if (this.config.overlay) {
       global.mocklabOverlay = this.config.overlay;
+      this.resetSequenceStateForOverlay(global.mocklabOverlay);
       console.log('Overlay from config: ' + colors.cyan + global.mocklabOverlay + colors.reset);
     }
+  }
+
+  // Applying an overlay always starts its sequences from the first file,
+  // regardless of where a previous activation left off.
+  resetSequenceStateForOverlay(overlayName) {
+    if (!overlayName) {
+      return;
+    }
+
+    const overlayDir = path.join(this.overlayBaseDir, overlayName);
+    const prefix = overlayDir + path.sep;
+    const state = global.mocklabSequenceState;
+
+    Object.keys(state).forEach(function(key) {
+      const keyDir = key.split('|')[0];
+      if (keyDir === overlayDir || keyDir.startsWith(prefix)) {
+        delete state[key];
+      }
+    });
   }
 
   getSearchDirectories(requestPath) {

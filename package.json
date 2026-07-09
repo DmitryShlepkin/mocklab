@@ -1,6 +1,6 @@
 {
   "name": "mocklab",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "File-based mock API server with file-based routing",
   "main": "index.js",
   "bin": {

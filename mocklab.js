@@ -45,7 +45,8 @@ class Mocklab {
       host: 'localhost',
       port: 3232,
       historyLimit: 100,
-      controlPanel: true
+      controlPanel: true,
+      skipDisplayFor: []
     };
 
     try {
@@ -181,7 +182,16 @@ class Mocklab {
     return { headers, body };
   }
 
+  shouldSkipDisplay(requestPath) {
+    const skipList = this.config.skipDisplayFor;
+    return Array.isArray(skipList) && skipList.includes(requestPath);
+  }
+
   logRequest(uri, method, filePath, error, status, body, query, headers, responseHeaders, responseBody) {
+    if (this.shouldSkipDisplay(uri.split('?')[0])) {
+      return;
+    }
+
     let relativeFilePath = '';
 
     if (filePath) {

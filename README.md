@@ -41,7 +41,8 @@ Create mock.conf
   "port": 3232,
   "overlay": "test",
   "historyLimit": 100,
-  "controlPanel": true
+  "controlPanel": true,
+  "skipDisplayFor": ["/favicon.ico", "/apple-touch-icon.png", "/apple-touch-icon-precomposed.png"]
 }
 ```
 Configuration options:
@@ -52,6 +53,7 @@ Configuration options:
 - `historyLimit` - Number of requests to keep in history (default: `100`)
 - `controlPanel` - Enable the web Control Panel (default: `true`). Set to `false` to turn it off.
 - `https` - Serve over HTTPS (default: HTTP). Provide `key` and `cert` file paths.
+- `skipDisplayFor` - List of request paths to exclude from the console log and Control Panel history (default: `[]`). Paths are matched exactly, without query string, e.g. `/favicon.ico`. The request is still handled normally — it's just not logged/displayed.
 
 If `mock.conf` doesn't exist, defaults to `localhost:3232` with no overlay.
 

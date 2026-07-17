@@ -84,6 +84,65 @@ openssl req -x509 -newkey rsa:2048 -nodes -keyout certs/key.pem -out certs/cert.
 npm run mock
 ```
 
+## Run with Docker Compose
+
+You can run Mocklab in Docker without installing Node.js on your machine. Create `mocks` and `overlays` folders next to your `docker-compose.yml`:
+
+```
+mkdir mocks overlays
+```
+
+> **Note:** inside a container the server must listen on `0.0.0.0` instead of the default `localhost`, otherwise it won't be reachable from your machine. That's why both examples pass `--host=0.0.0.0`. The Control Panel always runs on the next port after the server port, so both ports are published.
+
+#### Example 1: Default settings
+
+Runs on the default port `3232` with the Control Panel on `3233`:
+
+```yaml
+name: mocklab
+services:
+  server:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./mocks:/app/mocks
+      - ./overlays:/app/overlays
+    ports:
+      - "3232:3232"
+      - "3233:3233"
+    command: sh -c "npm install mocklab && npx mocklab --host=0.0.0.0"
+```
+
+Start it with:
+
+```
+docker compose up
+```
+
+Mocks are available at `http://localhost:3232` and the Control Panel at `http://localhost:3233`. Files added to `mocks` and `overlays` on your machine are picked up by the container through the volume mounts.
+
+#### Example 2: With CLI arguments
+
+Any of the supported CLI arguments can be appended to the `command`. This example runs on port `8080` with the `error-overlay` overlay active, a history limit of `50` and the Control Panel disabled:
+
+```yaml
+name: mocklab
+services:
+  server:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - ./mocks:/app/mocks
+      - ./overlays:/app/overlays
+    ports:
+      - "8080:8080"
+    command: sh -c "npm install mocklab && npx mocklab --host=0.0.0.0 --port=8080 --overlay=error-overlay --historyLimit=50 --controlPanel=false"
+```
+
+If you keep the Control Panel enabled, also publish the next port (`"8081:8081"` in this example).
+
+You can also use a `mock.conf` instead of CLI arguments by mounting it into the container: `- ./mock.conf:/app/mock.conf`. CLI arguments take priority over `mock.conf` values.
+
 ## How to Use
 
 #### File Naming Convention

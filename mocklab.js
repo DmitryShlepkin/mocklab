@@ -19,7 +19,8 @@ const colors = {
 class Mocklab {
   constructor() {
     this.app = express();
-    this.config = this.loadConfig();
+    this.cliConfig = this.parseCliArgs();
+    this.config = { ...this.loadConfig(), ...this.cliConfig };
     this.httpsOptions = this.getHttpsOptions();
     this.protocol = this.httpsOptions ? 'https' : 'http';
     this.mockDir = path.join(process.cwd(), 'mocks');
@@ -62,6 +63,43 @@ class Mocklab {
     return defaultConfig;
   }
 
+  // Parse supported --key=value command line arguments.
+  // Returned values take priority over mock.conf entries.
+  parseCliArgs() {
+    const supported = ['host', 'port', 'overlay', 'historyLimit', 'controlPanel'];
+    const cliConfig = {};
+    const args = process.argv.slice(2);
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const separatorIndex = arg.indexOf('=');
+      if (!arg.startsWith('--') || separatorIndex === -1) {
+        continue;
+      }
+
+      const key = arg.substring(2, separatorIndex);
+      const value = arg.substring(separatorIndex + 1);
+      if (supported.indexOf(key) === -1) {
+        continue;
+      }
+
+      if (key === 'port' || key === 'historyLimit') {
+        const parsed = parseInt(value, 10);
+        if (isNaN(parsed)) {
+          console.warn('Ignoring invalid value for --' + key + ': ' + value);
+          continue;
+        }
+        cliConfig[key] = parsed;
+      } else if (key === 'controlPanel') {
+        cliConfig[key] = value !== 'false';
+      } else {
+        cliConfig[key] = value;
+      }
+    }
+
+    return cliConfig;
+  }
+
   // Read TLS key/cert from config when HTTPS is enabled.
   // Config shape: "https": { "key": "./key.pem", "cert": "./cert.pem" }
   // Returns null (plain HTTP) when not configured or on failure.
@@ -88,22 +126,28 @@ class Mocklab {
   }
 
   setupOverlay() {
-    const args = process.argv.slice(2);
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-      if (arg.startsWith('--overlay=')) {
-        global.mocklabOverlay = arg.substring(10);
-        this.resetSequenceStateForOverlay(global.mocklabOverlay);
-        console.log('Overlay from command line: ' + colors.cyan + global.mocklabOverlay + colors.reset);
-        return;
-      }
+    const overlay = this.config.overlay;
+    if (!overlay) {
+      return;
     }
 
-    if (this.config.overlay) {
-      global.mocklabOverlay = this.config.overlay;
-      this.resetSequenceStateForOverlay(global.mocklabOverlay);
-      console.log('Overlay from config: ' + colors.cyan + global.mocklabOverlay + colors.reset);
+    if (!this.overlayExists(overlay)) {
+      this.overlayNotFound = true;
+      delete this.config.overlay;
+      return;
     }
+
+    const source = this.cliConfig.overlay ? 'command line' : 'config';
+    global.mocklabOverlay = overlay;
+    this.resetSequenceStateForOverlay(overlay);
+    console.log('Overlay from ' + source + ': ' + colors.cyan + overlay + colors.reset);
+  }
+
+  overlayExists(overlayName) {
+    if (!overlayName) {
+      return false;
+    }
+    return fs.existsSync(path.join(this.overlayBaseDir, overlayName));
   }
 
   // Applying an overlay always starts its sequences from the first file,
@@ -652,12 +696,15 @@ class Mocklab {
     server.listen(this.config.port, this.config.host, () => {
       const url = colors.cyan + this.protocol + '://' + this.config.host + ':' + this.config.port + colors.reset;
       const mocksPath = colors.cyan + this.mockDir + colors.reset;
-      const overlayName = colors.cyan + global.mocklabOverlay + colors.reset;
-
       console.log('Mock server running at ' + url);
       console.log('Serving mocks from: ' + mocksPath);
       if (global.mocklabOverlay) {
-        console.log('Active overlay: ' + overlayName);
+        console.log('Active overlay: ' + colors.cyan + global.mocklabOverlay + colors.reset);
+      } else if (this.overlayNotFound) {
+        console.log('Active overlay: ' + colors.red + 'Overlay Not Found' + colors.reset);
+      }
+      if (Object.keys(this.cliConfig).length > 0) {
+        console.log('Command Line Args: ' + JSON.stringify(this.cliConfig, null, 2));
       }
       console.log('Configuration: ' + JSON.stringify(this.config, null, 2));
     });

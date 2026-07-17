@@ -57,6 +57,20 @@ Configuration options:
 
 If `mock.conf` doesn't exist, defaults to `localhost:3232` with no overlay.
 
+#### Command Line Arguments
+
+`host`, `port`, `overlay`, `historyLimit` and `controlPanel` can also be passed as `--key=value` command line arguments. Values passed on the command line take priority over `mock.conf`:
+
+```
+npx mocklab --host=localhost --port=8080 --overlay=error-overlay --historyLimit=50 --controlPanel=false
+```
+
+When running through an npm script, add `--` before the arguments so npm forwards them to Mocklab:
+
+```
+npm run mock -- --host=localhost --port=8080 --overlay=error-overlay
+```
+
 #### HTTPS
 
 To run the mock server (and Control Panel) over HTTPS, add an `https` block with paths to your TLS key and certificate:

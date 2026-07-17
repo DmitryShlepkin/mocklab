@@ -1,3 +1,9 @@
+[![npm version](https://img.shields.io/npm/v/mocklab)](https://www.npmjs.com/package/mocklab)
+[![npm downloads](https://img.shields.io/npm/dm/mocklab)](https://www.npmjs.com/package/mocklab)
+[![Publish to npm](https://github.com/DmitryShlepkin/mocklab/actions/workflows/publish.yml/badge.svg)](https://github.com/DmitryShlepkin/mocklab/actions/workflows/publish.yml)
+[![license](https://img.shields.io/npm/l/mocklab)](./LICENSE)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DmitryShlepkin/mocklab/pulls)
+
 # Mocklab
 
 Mocklab is a library for creating codeless, file-based mock API server powered by Node.js. Mock any HTTP/HTTPS or REST dependency without writing a single line of code — just drop files into a folder and Mocklab turns them into live endpoints, with routes, HTTP methods, status codes, and response delays all driven by filenames.

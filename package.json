@@ -7,7 +7,8 @@
     "mocklab": "./index.js"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "test:func": "node --test tests/functional/index.js"
   },
   "keywords": [
     "mock",
@@ -38,5 +39,8 @@
     "patterns.js",
     "controlpanel.js",
     "README.md"
-  ]
+  ],
+  "devDependencies": {
+    "supertest": "^7.3.1"
+  }
 }

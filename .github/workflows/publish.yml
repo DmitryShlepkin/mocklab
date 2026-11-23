@@ -5,7 +5,26 @@ on:
     types: [created]
 
 jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run functional tests
+        run: npm run test:func
+
   publish:
+    needs: tests
     runs-on: ubuntu-latest
     environment: Production
     permissions:

@@ -3,6 +3,7 @@
 [![Publish to npm](https://github.com/DmitryShlepkin/mocklab/actions/workflows/publish.yml/badge.svg)](https://github.com/DmitryShlepkin/mocklab/actions/workflows/publish.yml)
 [![license](https://img.shields.io/npm/l/mocklab)](./LICENSE)
 [![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DmitryShlepkin/mocklab/pulls)
+[![Tests](https://github.com/DmitryShlepkin/mocklab/actions/workflows/tests.yml/badge.svg)](https://github.com/DmitryShlepkin/mocklab/actions/workflows/tests.yml)
 
 # Mocklab
 

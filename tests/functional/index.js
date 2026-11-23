@@ -3,7 +3,7 @@ const path = require('node:path');
 const { performance } = require('node:perf_hooks');
 const { before, describe, test } = require('node:test');
 const request = require('supertest');
-const Mocklab = require('../../mocklab');
+const Mocklab = require('../../server');
 
 let app;
 

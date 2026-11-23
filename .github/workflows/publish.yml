@@ -19,8 +19,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Run functional tests
-        run: npm run test:func
+      - name: Run unit and functional tests
+        run: npm test
 
   publish:
     needs: tests

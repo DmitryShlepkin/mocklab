@@ -331,3 +331,31 @@ From the panel you can:
 - Clear the history.
 - Add mocks if file missed.
 
+### Events API
+
+The Control Panel UI and server exchange messages through `/__events` on the Control
+Panel port (the mock server port plus one).
+
+- `GET /__events` opens a Server-Sent Events stream. Each `data` field contains a
+  JSON object. The initial message has `type: "snapshot"` and includes `history`,
+  `overlay`, and `overlays`. Updates use `type: "state"` with the same fields.
+  Development reloads use `type: "reload"`.
+- `POST /__events` accepts a JSON message and returns a JSON response.
+
+Supported POST messages:
+
+```json
+{ "type": "set-overlay", "overlay": "user-error" }
+{ "type": "set-overlay", "overlay": null }
+{ "type": "clear-history" }
+{
+  "type": "add-mock",
+  "uri": "/users/1",
+  "method": "GET",
+  "content": { "id": 1, "name": "Example" }
+}
+```
+
+Successful requests return `{"ok":true}`; `add-mock` also returns the created
+mock's path. Invalid messages return a JSON error response with HTTP 400.
+
